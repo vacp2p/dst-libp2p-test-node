@@ -1,0 +1,8 @@
+nimbledeps/*
+*.exe
+stew/*
+nim-stew-master/*
+shadow/*.exe
+shadow/shadow*
+shadow/latencies*
+shadow/network_topology.gml
