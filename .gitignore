@@ -1,5 +1,6 @@
 nimbledeps/*
 *.exe
+main
 stew/*
 nim-stew-master/*
 shadow/*.exe

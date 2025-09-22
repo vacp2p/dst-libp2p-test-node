@@ -1,16 +1,18 @@
-import stew/endians2, stew/byteutils, tables, strutils, os, osproc, chronos
-#import libp2p, libp2p/protocols/pubsub/rpc/messages
-#import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
-import "../../nim-libp2p/libp2p", "../../nim-libp2p/libp2p/protocols/pubsub/rpc/messages"
-import "../../nim-libp2p/libp2p/muxers/mplex/lpchannel", "../../nim-libp2p/libp2p/protocols/ping"
-import sequtils, hashes, math, metrics, metrics/chronos_httpserver, httpclient
-from times import getTime, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
+import stew/endians2, stew/byteutils, tables, strutils, os, osproc
+import json, base64
+import chronos, chronos/apps/http/[httpserver, httptable]
+import libp2p, libp2p/protocols/pubsub/rpc/messages
+import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
+import sequtils, hashes, math, metrics, metrics/chronos_httpserver
+from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
 
 let
   inShadow = existsEnv("SHADOWENV")
+  detatchedController = existsEnv("CONTROLLER")
+  httpPublishPort = Port(8645)
   prometheusPort = Port(8008)
-  myPort = 5000 + parseInt(getEnv("PEERNUMBER", "0"))
+  myPort = Port(5000 + parseInt(getEnv("PEERNUMBER", "0")))
   chunks = parseInt(getEnv("FRAGMENTS", "1"))
 
 proc msgIdProvider(m: Message): Result[MessageId, ValidationResult] =
@@ -34,13 +36,114 @@ proc startMetricsServer(
   info "Metrics HTTP server started", serverIp = $serverIp, serverPort = $serverPort
   ok(metricsServerRes.value)
 
+# log metrics if needed (useful for shadow simulations)
+proc storeMetrics(myId: int) {.async.} =
+  echo "Fetching metrics"
+  await sleepAsync((myId*60).milliseconds)
+  let cmd = "curl -s --connect-timeout 5 --max-time 5 -o metrics_peer" & 
+          $myId & ".txt http://localhost:" & $prometheusPort & "/metrics"
+  
+  let exitCode = execCmd(cmd)
+  if exitCode == 0:
+    echo "Metrics saved for peer ", myId
+  else:
+    echo "Failed to fetch metrics for peer ", myId, ": curl exit code ", exitCode
+  await sleepAsync(6.seconds)
+
+proc publishNewMessage(gossipSub: GossipSub, myId: int, msgSize: int, payload: seq[byte] = @[]): Future[(Time, int)] {.async.} =
+  let
+    now = getTime()
+    nowInt = seconds(now.toUnix()) + nanoseconds(times.nanosecond(now))
+
+  echo "Publishing turn is: ", myId, "sending at ", now
+  
+  var result = 0
+  if payload.len > 0:
+    #We simply relay the message (latency estimates?)
+    result = await gossipSub.publish("test", payload)
+  else:
+    var nowBytes = @(toBytesLE(uint64(nowInt.nanoseconds))) & newSeq[byte](msgSize div chunks)
+    for chunk in 0..<chunks:
+      nowBytes[10] = byte(chunk)
+      result = await gossipSub.publish("test", nowBytes)
+  
+  return (now, result)
+
+#http endpoint for detatched controller
+proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.async.} =
+  #Look for incoming requests from publish controller
+  proc processRequests(request: RequestFence): Future[HttpResponseRef] {.async.} =
+    if request.isErr():
+      return defaultResponse()
+      
+    let req = request.get()
+    try:
+      case req.meth
+      of MethodPost:
+        if req.uri.path == "/publish" or req.uri.path == "/relay":
+          let
+            bodyBytes = await req.getBody()
+            jsonBody = parseJson(string.fromBytes(bodyBytes))
+            payload = jsonBody["payload"].getStr()
+            topic = jsonBody["topic"].getStr()
+            msgSize = jsonBody["msgSize"].getInt()
+            version = jsonBody["version"].getInt()     #check for compatible version?
+            # convert base64 payload to seq[byte]
+            decodedPayload = if req.uri.path == "/relay":
+              toBytes(base64.decode(payload)) else: @[]
+
+          echo "command : ", req.uri.path, " topic : ", topic, " size : ", msgSize, " version : ", version
+          let (publishTime, publishResult) = await gossipSub.publishNewMessage(myId, msgSize, decodedPayload)
+          
+          if publishResult > 0:
+            let responseJson = """{"status":"success","message":"Message published at time """ & $publishTime & "}"
+            return await req.respond(Http200, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+          else:
+            let responseJson = """{"status":"error","message":"Failed to publist at time """ & $publishTime & "}"
+            return await req.respond(Http500, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+        else:
+          return await req.respond(Http404, "Not Found")
+          
+      of MethodGet:
+        #One possible option to check peer health,,, can be useful
+        if req.uri.path == "/health":
+          let
+            bodyBytes = await req.getBody()
+            jsonBody = parseJson(string.fromBytes(bodyBytes))
+            topic = jsonBody["topic"].getStr()
+          let responseJson = """{"status":"Mesh Size is """ & $gossipSub.mesh.getOrDefault(topic).len & "}"
+          return await req.respond(Http200, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+        else:
+          return await req.respond(Http404, "Not Found")
+      else:
+        return await req.respond(Http405, "Method Not Supported")
+        
+    except CatchableError as e:
+      echo "Error handling request: ", e.msg
+      let responseJson = """{"status":"error","message":"""" & e.msg.replace("\"", "\\\"") & """"}"""
+      return await req.respond(Http400, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+
+  # http endpoint for publish controller
+  echo "starting server"
+  let serverAddress = initTAddress("0.0.0.0:" & $httpPublishPort)
+  let serverRes = HttpServerRef.new(serverAddress, processRequests)
+  echo "Server Created"
+
+  if serverRes.isErr():
+    raise newException(CatchableError, "Failed to create HTTP server: " & $serverRes.error)
+    
+  let server = serverRes.get()
+  server.start()
+  echo "HTTP server started on port ", httpPublishPort
+  return server
+
 proc main {.async.} =
   let
     hostname = getHostname()
-    myId = if inShadow: 
+    myId = if inShadow:
       parseInt(hostname[4..^1])
     else:
-      parseInt(hostname.split('.')[0].split('-')[1])
+      parseInt(hostname.split('-')[^1])
     #myId = parseInt(getEnv("PEERNUMBER", "0"))               #Alternatively, we can use ENV
     networkSize = parseInt(getEnv("PEERS", "1000"))
     msgRate = parseInt(getEnv("MSGRATE", "1000"))
@@ -122,7 +225,6 @@ proc main {.async.} =
       diff = getTime() - sentDate
     echo sentUint, " milliseconds: ", diff.inMilliseconds()
 
-
   var
     startOfTest: Moment
     attackAfter = 10000.hours
@@ -183,41 +285,31 @@ proc main {.async.} =
       echo "Waiting 15 seconds..."
       await sleepAsync(15.seconds)
   echo "Mesh size: ", gossipSub.mesh.getOrDefault("test").len
+  
+  if detatchedController:
+    echo "Starting listening endpoint for publish controller"
+    discard gossipSub.startHttpServer(myId)
 
-  let offset = if inShadow: 1 else: 0
-  var senderId = publisherId
-  for msgNumber in 0 ..< messageCount:
-    await sleepAsync(msgRate.milliseconds)
-    if myId == senderId:
-      let
-        now = getTime()
-        nowInt = seconds(now.toUnix()) + nanoseconds(times.nanosecond(now))
+    while true:
+      await sleepAsync(3.seconds)
+      echo "Rotating again"
+  else:
+    let offset = if inShadow: 1 else: 0
+    var senderId = publisherId
+    for msgNumber in 0 ..< messageCount:
+      await sleepAsync(msgRate.milliseconds)
+      if myId == senderId:
+        let (publishTime, publishResult) = await gossipSub.publishNewMessage(myId, msgSize)
+        echo "published at : ", publishTime, " status : ", publishResult
+      if senderRotation:
+        senderId = (senderId + 1) mod (networkSize + offset)
+        if inShadow and senderId == 0:
+          senderId = 1
+    await sleepAsync(25.seconds)
 
-      echo "Publishing turn is: ", myId, "sending at ", now
-      var nowBytes = @(toBytesLE(uint64(nowInt.nanoseconds))) & newSeq[byte](msgSize div chunks)
-      for chunk in 0..<chunks:
-        nowBytes[10] = byte(chunk)
-        doAssert((await gossipSub.publish("test", nowBytes)) > 0)
-    
-    if senderRotation:
-      senderId = (senderId + 1) mod (networkSize + offset)
-      if inShadow and senderId == 0:
-        senderId = 1
-
-  await sleepAsync(15.seconds)
   if metricsServer.isOk() and inShadow:
-    echo "Fetching metrics"
-    await sleepAsync((myId*60).milliseconds)
-    let cmd = "curl -s --connect-timeout 5 --max-time 5 -o metrics_peer" & 
-            $myId & ".txt http://localhost:" & $prometheusPort & "/metrics"
-    
-    let exitCode = execCmd(cmd)
-    if exitCode == 0:
-      echo "Metrics saved for peer ", myId
-    else:
-      echo "Failed to fetch metrics for peer ", myId, ": curl exit code ", exitCode
-    await sleepAsync(6.seconds)
-    
+    await storeMetrics(myId)
+
   quit(0)
 
 waitFor(main())
