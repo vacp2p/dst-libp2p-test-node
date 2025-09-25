@@ -49,21 +49,23 @@ proc storeMetrics(myId: int) {.async.} =
     info "Failed to fetch metrics for peer ", peer = myId, curlExitCode = $exitCode
   await sleepAsync(6.seconds)
 
-proc publishNewMessage(gossipSub: GossipSub, myId: int, msgSize: int): Future[(Time, int)] {.async.} =
+proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
   let
     now = getTime()
     nowInt = seconds(now.toUnix()) + nanoseconds(times.nanosecond(now))
   var 
     res = 0
+    #create payload with timestamp, so the receiver can discover elapsed time
     nowBytes = @(toBytesLE(uint64(nowInt.nanoseconds))) & newSeq[byte](msgSize div chunks)
 
+  #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
     nowBytes[10] = byte(chunk)
-    res = await gossipSub.publish("test", nowBytes)
+    res = await gossipSub.publish(topic, nowBytes)
   
   return (now, res)
 
-#http endpoint for detatched controller
+#http endpoint for detached controller
 proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.async.} =
   #Look for incoming requests from publish controller
   proc processRequests(request: RequestFence): Future[HttpResponseRef] {.async.} =
@@ -83,7 +85,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
             version = jsonBody["version"].getInt()     #check for compatible version?
 
           info "controller message ", command = req.uri.path, topic = topic, size = msgSize, version = version
-          let (publishTime, publishResult) = await gossipSub.publishNewMessage(myId, msgSize)
+          let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, topic)
           
           if publishResult > 0:
             let responseJson = """{"status":"success","message":"Message published at time """ & $publishTime & "}"
@@ -222,18 +224,6 @@ proc main {.async.} =
   #Wait for node building
   await sleepAsync(60.seconds)
 
-  proc pinger(peerId: PeerId) {.async.} =
-    try:
-      await sleepAsync(20.seconds)
-      while true:
-        let stream = await switch.dial(peerId, PingCodec)
-        let delay = await pingProtocol.ping(stream)
-        await stream.close()
-        #echo delay
-        await sleepAsync(delay)
-    except:
-      info "Failed to ping"
-
   var 
     connected = 0
     peersInfo = toSeq(1..networkSize).filterIt(it != myId)
@@ -272,7 +262,7 @@ proc main {.async.} =
     for msgNumber in 0 ..< messageCount:
       await sleepAsync(msgRate.milliseconds)
       if myId == senderId:
-        let (publishTime, publishResult) = await gossipSub.publishNewMessage(myId, msgSize)
+        let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, "test")
         info "published message : ", time = $publishTime, peer = myId, status = publishResult
       if senderRotation:
         senderId = (senderId + 1) mod (networkSize + offset)
