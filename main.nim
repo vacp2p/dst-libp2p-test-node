@@ -1,14 +1,15 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, osproc, json
 import chronos, chronos/apps/http/[httpserver, httptable]
-import libp2p, libp2p/protocols/pubsub/rpc/messages
-import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
+#import libp2p, libp2p/protocols/pubsub/rpc/messages
+#import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
+import "../../nim-libp2p/libp2p", "../../nim-libp2p/libp2p/protocols/pubsub/rpc/messages"
+import "../../nim-libp2p/libp2p/muxers/mplex/lpchannel", "../../nim-libp2p/libp2p/protocols/ping"
 import sequtils, hashes, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
 
 let
   inShadow = existsEnv("SHADOWENV")
-  detatchedController = existsEnv("CONTROLLER")
   httpPublishPort = Port(8645)
   prometheusPort = Port(8008)
   myPort = Port(5000)
@@ -37,17 +38,20 @@ proc startMetricsServer(
 
 # log metrics if needed (useful for shadow simulations)
 proc storeMetrics(myId: int) {.async.} =
-  info "Fetching metrics"
   await sleepAsync((myId*60).milliseconds)
-  let cmd = "curl -s --connect-timeout 5 --max-time 5 -o metrics_peer" & 
-          $myId & ".txt http://localhost:" & $prometheusPort & "/metrics"
-  
-  let exitCode = execCmd(cmd)
-  if exitCode == 0:
-    info "Metrics saved for peer ", peer = myId
-  else:
-    info "Failed to fetch metrics for peer ", peer = myId, curlExitCode = $exitCode
-  await sleepAsync(6.seconds)
+  while true:
+    try:
+      let cmd = "curl -s --connect-timeout 5 --max-time 5 http://localhost:" & 
+          $prometheusPort & "/metrics >> metrics_pod-" & $myId & ".txt"
+      
+      let exitCode = execCmd(cmd)
+      if exitCode == 0:
+        info "Metrics saved for peer ", pod = myId
+      else:
+        info "Failed to fetch metrics for peer ", pod = myId, curlExitCode = $exitCode
+    except CatchableError as e:
+      info "Error storing metrics: ", error = e.msg
+    await sleepAsync(15.seconds)
 
 proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
   let
@@ -119,53 +123,55 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
 proc main {.async.} =
   let
     hostname = getHostname()
-    myId = if inShadow:
-      parseInt(hostname[4..^1])
-    else:
-      parseInt(hostname.split('-')[^1])
+    myId = parseInt(hostname.split('-')[^1])
     networkSize = parseInt(getEnv("PEERS", "1000"))
-    msgRate = parseInt(getEnv("MSGRATE", "1000"))
-    msgSize = parseInt(getEnv("MSGSIZE", "1000"))
-    messageCount = parseInt(getEnv("PUBLISHERS", "10"))
-    publisherId = parseInt(getEnv("PUBLISHERID", "1"))
     connectTo = parseInt(getEnv("CONNECTTO", "10"))
-    senderRotation = getEnv("ROTATEPUBLISHER", "0") != "0"
-
-    isPublisher = if senderRotation: 
-      myId in publisherId..(publisherId + messageCount)
-    else:
-      myId == publisherId
-    #isAttacker = (not isPublisher) and myId - publisherCount <= client.param(int, "attacker_count")
+    muxer = getEnv("MUXER", "yamux")
     isAttacker = false
     rng = libp2p.newRng()
 
-  info "Host info ", host = hostname, peer = myId
+  info "Host info ", host = hostname, peer = myId, muxer = muxer
+  let address = 
+    if muxer.toLowerAscii() == "quic":
+      "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
+    else:
+      "/ip4/0.0.0.0/tcp/" & $myPort
+
+  var builder = SwitchBuilder
+    .new()
+    .withRng(rng)
+    .withMaxConnections(250)
+    .withNoise()
+  
+  case muxer.toLowerAscii()
+  of "quic":
+    builder = builder.withQuicTransport().withAddress(
+      MultiAddress.init(address).tryGet()
+    )
+  of "yamux":
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withAddress(
+      MultiAddress.init(address).tryGet()
+    ).withYamux()
+  of "mplex":
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withAddress(
+      MultiAddress.init(address).tryGet()
+    ).withMplex()
+  
   let
-    myaddress = "0.0.0.0" & ":" & $myPort
-    address = initTAddress(myaddress)
-    switch =
-      SwitchBuilder
-        .new()
-        .withAddress(MultiAddress.init(address).tryGet())
-        .withRng(rng)
-        .withYamux()
-        #.withQUIC()
-        .withMaxConnections(250)
-        .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-        #.withPlainText()
-        .withNoise()
-        .build()
+    switch = builder.build()
     gossipSub = GossipSub.init(
       switch = switch,
-#      triggerSelf = true,
+      #triggerSelf = true,
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = true,
       )
-    pingProtocol = Ping.new(rng=rng)
+
   # Metrics
   info "Starting metrics server"
   let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
+  if metricsServer.isOk() and inShadow:
+    asyncSpawn storeMetrics(myId)
 
   gossipSub.parameters.floodPublish = true
   #gossipSub.parameters.lazyPushThreshold = 1_000_000_000
@@ -215,9 +221,7 @@ proc main {.async.} =
   gossipSub.subscribe("test", messageHandler)
   gossipSub.addValidator(["test"], messageValidator)
   switch.mount(gossipSub)
-  switch.mount(pingProtocol)
   await switch.start()
-  #defer: await switch.stop()
 
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
@@ -226,16 +230,15 @@ proc main {.async.} =
 
   var 
     connected = 0
-    peersInfo = toSeq(1..networkSize).filterIt(it != myId)
+    peersInfo = toSeq(0..<networkSize).filterIt(it != myId)
   rng.shuffle(peersInfo)
 
   for peerInfo in peersInfo:
     if connected > connectTo: break
-    
     let tAddress = if inShadow:
-        "peer" & $peerInfo & ":" & $myPort                            # Shadow format
+        "pod-" & $peerInfo & ":" & $myPort                        # Shadow format
     else:
-        "pod-" & $(peerInfo-1) & ".nimp2p-service:" & $myPort         # k8s format
+        "pod-" & $peerInfo & ".nimp2p-service:" & $myPort         # k8s format
 
     info "Trying to resolve ", theirAddress = tAddress
     
@@ -243,7 +246,6 @@ proc main {.async.} =
       let addrs = resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
       info "Address resolved ", theirAddress = tAddress, resolved = addrs
       let peerId = await switch.connect(addrs[0], allowUnknownPeerId=true).wait(5.seconds)
-      #asyncSpawn pinger(peerId)
       connected.inc()
       info "Connected!: current connections ", connected = $connected, desired = connectTo
     except CatchableError as exc:
@@ -251,27 +253,12 @@ proc main {.async.} =
       await sleepAsync(15.seconds)
   info "Mesh size ", mesh = gossipSub.mesh.getOrDefault("test").len
   
-  if detatchedController:
-    info "Starting listening endpoint for publish controller"
-    discard gossipSub.startHttpServer(myId)
-    while true:
-      await sleepAsync(1.hours)
-  else:
-    let offset = if inShadow: 1 else: 0
-    var senderId = publisherId
-    for msgNumber in 0 ..< messageCount:
-      await sleepAsync(msgRate.milliseconds)
-      if myId == senderId:
-        let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, "test")
-        info "published message : ", time = $publishTime, peer = myId, status = publishResult
-      if senderRotation:
-        senderId = (senderId + 1) mod (networkSize + offset)
-        if inShadow and senderId == 0:
-          senderId = 1
-    await sleepAsync(25.seconds)
+  await sleepAsync(5.seconds)
+  info "Starting listening endpoint for publish controller"
+  discard gossipSub.startHttpServer(myId)
 
-  if metricsServer.isOk() and inShadow:
-    await storeMetrics(myId)
+  while true:
+    await sleepAsync(1.hours)
 
   quit(0)
 
