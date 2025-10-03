@@ -1,9 +1,7 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, osproc, json
 import chronos, chronos/apps/http/[httpserver, httptable]
-#import libp2p, libp2p/protocols/pubsub/rpc/messages
-#import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
-import "../../nim-libp2p/libp2p", "../../nim-libp2p/libp2p/protocols/pubsub/rpc/messages"
-import "../../nim-libp2p/libp2p/muxers/mplex/lpchannel", "../../nim-libp2p/libp2p/protocols/ping"
+import libp2p, libp2p/protocols/pubsub/rpc/messages
+import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
 import sequtils, hashes, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
