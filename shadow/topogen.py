@@ -1,116 +1,167 @@
-import sys, math, networkx as nx
+import math
+import argparse
+import networkx as nx
+import yaml
 
-args = sys.argv
-if len(args) != 14:
-    print("Usage: python topogen.py <network_size> <min_bandwidth> <max_bandwidth> <min_latency> <max_latency> <anchor_stages> \
-          <packet_loss> <message_size> <num_frags> <num_publishers> <PublisherID> <Publisher_rotation> <message_delay>")
-    print("Please note that bandwith and latency are integer values in Mbps and ms respectively")
-    print("Anchor stages represent the number of bandwidth and latency variations")
-    print("packet_loss [0-1], Message size [KB], num_frags [number of fragments/message 1-10], num_publishers [number of publishers]")
-    exit(-1)
-
-print (args[1:])
-try:
-    networkSize     = int(args[1])
-    minBandwidth    = int(args[2])
-    maxBandwidth    = int(args[3])
-    minLatency      = int(args[4])
-    maxLatency      = int(args[5])
-    steps           = int(args[6])
-    packetLoss      = float(args[7])
-    messageSize     = int(args[8])
-    numFrags        = int(args[9])
-    numPublishers   = int(args[10])
-    PublisherID     = int(args[11])
-    rotatePublisher = int(args[12])
-    messageDelay    = int(args[13])
-    shadowEnv       = 1
-
-except ValueError:
-    print("Usage: python topogen.py <network_size> <min_bandwidth> <max_bandwidth> <min_latency> <max_latency> <anchor_stages> \
-          <packet_loss> <message_size> <num_frags> <num_publishers> <PublisherID> <Publisher_rotation> <messageDelay>")
-    print("Please note that bandwith and latency are integer values in Mbps and ms respectively")
-    print("Anchor stages represent the number of bandwidth and latency variations")
-    print("packet_loss [0-1], Message size [KB], num_frags [number of fragments/message 1-10], num_publishers [number of publishers]")
-    print("numPublishers provides the number of messages to be transmitted, and messageDelay provides inter-message delay")
-    print("PublisherID is sender ID. Publisher_rotation is bool [0=no, 1=yes].")
-    exit(-1)
-
-gml_file  = "network_topology.gml"      #network topology layout in gml format, to be used by the yaml file
-yaml_file = "shadow.yaml"               #shadow simulator settings
-connections = 10                         #Initial connections to form full-message mesh
-bandwidthJump = (maxBandwidth-minBandwidth)/(steps-1)
-latencyJump = int((maxLatency-minLatency)/steps)
-
-"""
-We create network work graph, with 'steps' number of independent nodes. And all the nodes must be connected. 
-Shadow uses accumulative edge latencies to route traffic through the shortest paths (accumulative link latencies)
-
-Multiple hosts can connect with a single node. The node must define 'host_bandwidth_up' and 'host_bandwidth_down' 
-bandwidths, and each connected host gets this bandwidth allocated (bandwidth is not shared between hosts)
-
-We MUST have an edge connecting a node to itself. All the Intra-node communications (among the hosts connected to 
-the same node) happen by using that edge. 
-
-latency and packet loss are edge characteristics
-"""
-
-G=nx.complete_graph(steps)
-
-for i in range(0, steps):
-    nodeBw = str(math.ceil(i * bandwidthJump + minBandwidth)) + " Mbit"
-    G.nodes[i]["hostbandwidthup"] = nodeBw
-    G.nodes[i]["hostbandwidthdown"] = nodeBw
-    G.add_edge(i,i)
-    G.edges[i,i]["latency"] = str( max((steps-i)*latencyJump, minLatency) ) + " ms"
-    G.edges[i,i]["packetloss"] = packetLoss
-
-    for j in range(i+1, steps):
-        edgeLatency = min(math.ceil((steps-j)*latencyJump + minLatency), maxLatency)
-        G.edges[i,j]["latency"] = str(edgeLatency) + " ms"
-        G.edges[i,j]["packetloss"] = packetLoss
-
-nx.write_gml(G, gml_file)
+#Configurable in test node, message injector, but fixed here
+shadow_env = 1 
+connections = 10
+gml_file = "network_topology.gml"
+yaml_file = "shadow.yaml"
 
 
-#networkx package can not write underscores. so we created gml without underscores. Now we embed them underscores 
-with open(gml_file, 'r') as file:
-    gml_content = file.read()
-
-modified_content = gml_content.replace("hostbandwidth", "host_bandwidth_")
-modified_content = modified_content.replace("packetloss", "packet_loss")
-
-with open(gml_file, "w") as file:
-    file.write(modified_content)
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Generate network topology and yaml for shadow")
+    parser.add_argument('-n', '--network-size', type=int, help='Number of peers in the network', default=100)
+    parser.add_argument('-bl', '--min-bandwidth', type=int, help='Minimum bandwidth in Mbps', default=50)
+    parser.add_argument('-bh', '--max-bandwidth', type=int, help='Maximum bandwidth in Mbps', default=50)
+    parser.add_argument('-ll', '--min-latency', type=int, help='Minimum latency in ms', default=100)
+    parser.add_argument('-lh', '--max-latency', type=int, help='Maximum latency in ms', default=100)
+    parser.add_argument('-st', '--anchor-stages', type=int, help='Number of bandwidth/latency variations', default=1)
+    parser.add_argument('-l', '--packet-loss', type=float, help='Packet loss rate (0-1)', default=0.0)
+    parser.add_argument('-s', '--msg-size-bytes', type=int, help='Message size in bytes', default=1500)
+    parser.add_argument('-f', '--num-frags', type=int, choices=range(1, 10), help='Number of fragments per message (1-10)', default=1)
+    parser.add_argument('-m', '--messages', type=int, help='Number of messages to publish', default=10)
+    parser.add_argument('-d', '--delay-seconds', type=float, help='Inter-message delay in seconds', default=0.1)
+    parser.add_argument('-mx', '--muxer', type=str, choices=['mplex', 'yamux', 'quic'], help='Muxer selection', default='yamux')
     
-
-#we created the gml. now we create the yaml file required by shadow
-m1 = "\n    network_node_id: "
-m2 = "\n    processes:"
-m3 = "\n    - path: ./main"
-m4 = "\n      start_time: 5s"
-
-with open(yaml_file, "w") as file:
-    file.write("general:\n  bootstrap_end_time: 10s\n  heartbeat_interval: 12s\n  stop_time: 15m\n")
-    file.write("  progress: true\n\nexperimental:\n  use_memory_manager: false\n\n")
-    file.write("network:\n  graph:\n    type: gml\n    file:\n      path: " + gml_file)
-    file.write("\n\nhosts:\n")
+    args = parser.parse_args()
     
-    #we create 'steps' number of template peers, to be used by the remaining peers
-    for i in range(0,steps):
-        file.write("  peer" + str(i+1) + ": &client_host" + str(i))
-        file.write(m1 + str(i) + m2 + m3 + m4)
-        file.write("\n      environment: {\"PEERS\": \"" + str(networkSize) + 
-                   "\", \"SHADOWENV\": \"" + str(shadowEnv) +             
-                   "\", \"CONNECTTO\": \"" + str(connections) + 
-                   "\", \"MSGSIZE\": \"" + str(messageSize) +       #in bytes
-                   "\", \"FRAGMENTS\": \"" + str(numFrags) +        
-                   "\", \"MSGRATE\": \"" + str(messageDelay) +      #in milliseconds
-                   "\", \"PUBLISHERS\": \"" + str(numPublishers) +  
-                   "\", \"PUBLISHERID\": \"" + str(PublisherID) +   
-                   "\", \"ROTATEPUBLISHER\": \"" + str(rotatePublisher) + "\"}\n")
+    # Validate arguments
+    if args.min_bandwidth > args.max_bandwidth:
+        parser.error("min_bandwidth cannot exceed max_bandwidth")
+    if args.min_latency > args.max_latency:
+        parser.error("min_latency cannot exceed max_latency")
+    
+    return args
+
+
+def create_network_topology(steps, min_bandwidth, max_bandwidth, 
+                            min_latency, max_latency, packet_loss):
+
+    G = nx.complete_graph(steps)
+
+    bandwidth_jump = int((max_bandwidth - min_bandwidth) / steps)
+    latency_jump = int((max_latency - min_latency) / steps)
+    
+    # Configure nodes and edges
+    for i in range(steps):
+        node_bw = f"{math.ceil(i * bandwidth_jump + min_bandwidth)} Mbit"
+        G.nodes[i]["host_bandwidth_up"] = node_bw
+        G.nodes[i]["host_bandwidth_down"] = node_bw
         
-    #we populate remaining peers on populated samples    
-    for i in range(steps, networkSize):
-        file.write("  peer" + str(i+1) + ": *client_host" + str(i%steps) + "\n")
+        # Self-loop for intra-node communication
+        G.add_edge(i, i)
+        G.edges[i, i]["latency"] = f"{max((steps - i) * latency_jump, min_latency)} ms"
+        G.edges[i, i]["packet_loss"] = packet_loss
+        
+        # Edges to other nodes
+        for j in range(i + 1, steps):
+            edge_latency = min(math.ceil((steps - j) * latency_jump + min_latency), max_latency)
+            G.edges[i, j]["latency"] = f"{edge_latency} ms"
+            G.edges[i, j]["packet_loss"] = packet_loss
+    
+    # Add fast node for message injector
+    G.add_node(steps, host_bandwidth_up="100 Mbit", host_bandwidth_down="100 Mbit")
+    for i in range(steps + 1):
+        G.add_edge(i, steps)
+        G.edges[i, steps]["latency"] = "1 ms"
+        G.edges[i, steps]["packet_loss"] = 0.0
+    
+    nx.write_gml(G, gml_file)
 
+
+def create_shadow_config(steps, network_size, num_publishers, num_frags, 
+                        message_size, message_delay, muxer):
+    
+    #simulation details
+    config = {
+        'general': {
+            'bootstrap_end_time': '10s',
+            'heartbeat_interval': '12s',
+            'stop_time': '15m',
+            'progress': True
+        },
+        'experimental': {
+            'use_memory_manager': False
+        },
+        'network': {
+            'graph': {
+                'type': 'gml',
+                'file': {
+                    'path': gml_file
+                }
+            }
+        },
+        'hosts': {}
+    }
+    
+    # Peer settings (for each stage)
+    host_templates = {}
+    for i in range(steps):
+        host_config = {
+            'network_node_id': i,
+            'processes': [{
+                'path': './main',
+                'start_time': '5s',
+                'environment': {
+                    'PEERS': str(network_size),
+                    'SHADOWENV': str(shadow_env),
+                    'CONNECTTO': str(connections),
+                    'PUBLISHERS': str(num_publishers),
+                    'FRAGMENTS': str(num_frags),
+                    'MUXER': muxer
+                }
+            }]
+        }
+        host_templates[i] = host_config
+        config['hosts'][f'pod-{i}'] = host_config
+    
+    # Distribute peers in all stages
+    for i in range(steps, network_size):
+        config['hosts'][f'pod-{i}'] = host_templates[i % steps]
+    
+    # Add publish controller
+    controller_config = {
+        'network_node_id': steps,
+        'processes': [{
+            'path': '/usr/bin/python',
+            'args': f'../../../traffic_sync.py -s {message_size} -m {num_publishers} -d {message_delay} -n {network_size} --peer-selection id',
+            'start_time': '500s',
+            'environment': {
+                'SHADOWENV': str(shadow_env)
+            }
+        }]
+    }
+    config['hosts'][f'pod-{network_size}'] = controller_config
+
+    with open(yaml_file, 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+
+def main():
+    args = parse_arguments()
+    
+    # generate network topology
+    create_network_topology(
+        args.anchor_stages,
+        args.min_bandwidth,
+        args.max_bandwidth,
+        args.min_latency,
+        args.max_latency,
+        args.packet_loss
+        )       
+    
+    # generate shadow configuration
+    create_shadow_config(
+        args.anchor_stages,
+        args.network_size,
+        args.messages,
+        args.num_frags,
+        args.msg_size_bytes,
+        args.delay_seconds,
+        args.muxer
+        )
+    
+if __name__ == "__main__":
+    main()
