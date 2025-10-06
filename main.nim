@@ -8,7 +8,7 @@ from nativesockets import getHostname
 
 let
   inShadow = existsEnv("SHADOWENV")
-  httpPublishPort = Port(8645)
+  httpPublishPort = Port(8645)            #http message injector
   prometheusPort = Port(8008)
   myPort = Port(5000)
   chunks = parseInt(getEnv("FRAGMENTS", "1"))
@@ -49,7 +49,7 @@ proc storeMetrics(myId: int) {.async.} =
         info "Failed to fetch metrics for peer ", pod = myId, curlExitCode = $exitCode
     except CatchableError as e:
       info "Error storing metrics: ", error = e.msg
-    await sleepAsync(15.seconds)
+    await sleepAsync(60.seconds)
 
 proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
   let
@@ -159,7 +159,7 @@ proc main {.async.} =
     switch = builder.build()
     gossipSub = GossipSub.init(
       switch = switch,
-      #triggerSelf = true,
+      triggerSelf = true,
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = true,
@@ -241,7 +241,16 @@ proc main {.async.} =
     info "Trying to resolve ", theirAddress = tAddress
     
     try:
-      let addrs = resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
+      let addrs = 
+        if muxer.toLowerAscii() == "quic":
+          let quicV1 = MultiAddress.init("/quic-v1").tryGet()
+          resolveTAddress(tAddress).mapIt(
+            MultiAddress.init(it, IPPROTO_UDP).tryGet()
+              .concat(quicV1).tryGet()
+          )
+        else:
+          resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
+
       info "Address resolved ", theirAddress = tAddress, resolved = addrs
       let peerId = await switch.connect(addrs[0], allowUnknownPeerId=true).wait(5.seconds)
       connected.inc()
