@@ -1,12 +1,21 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, osproc, json
-import chronos, chronos/apps/http/[httpserver, httptable]
+import chronos, chronos/apps/http/httpserver
+import node
+import std/[strformat, random, hashes]
+import mix/[mix_node, entry_connection, mix_protocol]
+
 import libp2p, libp2p/protocols/pubsub/rpc/messages
 import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
-import sequtils, hashes, math, metrics, metrics/chronos_httpserver
+import libp2p/crypto/secp, libp2p/protocols/pubsub/pubsubpeer
+
+import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
 
 let
+  #Env(ISMIX) to enable mix support. First mixCount peers are mix-net peers
+  isMix = existsEnv("ISMIX")
+  mixCount = parseInt(getEnv("NUMMIX", "0"))
   inShadow = existsEnv("SHADOWENV")
   httpPublishPort = Port(8645)            #http message injector
   prometheusPort = Port(8008)
@@ -63,8 +72,12 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
     nowBytes[10] = byte(chunk)
-    res = await gossipSub.publish(topic, nowBytes)
-  
+    res = if isMix:
+      await gossipSub.publish(topic, nowBytes, 
+        publishParams = some(PublishParams(skipMCache: true, useCustomConn: isMix)),
+      )
+    else:
+      await gossipSub.publish(topic, nowBytes)
   return (now, res)
 
 #http endpoint for detached controller
@@ -118,7 +131,113 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
+var mixNodes: MixNodes = @[]
+const mix_D* = 4 # No. of peers to forward to
+
+proc mixPeerSelection*(
+    allPeers: HashSet[PubSubPeer],
+    directPeers: HashSet[PubSubPeer],
+    meshPeers: HashSet[PubSubPeer],
+    fanoutPeers: HashSet[PubSubPeer],
+): HashSet[PubSubPeer] {.gcsafe, raises: [].} =
+  var
+    peers: HashSet[PubSubPeer]
+    allPeersSeq = allPeers.toSeq()
+  let rng = newRng()
+  rng.shuffle(allPeersSeq)
+  for p in allPeersSeq:
+    peers.incl(p)
+    if peers.len >= mix_D:
+      break
+  return peers
+
+
+proc initializeMix(myId: int, mixCount: int): 
+  Result[(MultiAddress, SkPublicKey, SkPrivateKey), string] =
+  {.gcsafe.}:
+    #We assume that first mixCount nodes are mix capable nodes
+    let (multiAddrStr, libp2pPubKey, libp2pPrivKey) =
+      if myId < mixCount:
+        mixNodes = initializeMixNodes(1, int(myPort)).valueOr:
+          return err("Could not generate Mix nodes")
+        let (ma, _, _, pubKey, privKey) = getMixNodeInfo(mixNodes[0])
+        (ma, pubKey, privKey)  
+      else:
+        discard initializeNodes(1, int(myPort))
+        getNodeInfo(nodes[0])
+    
+    let 
+      multiAddrParts = multiAddrStr.split("/p2p/")
+      multiAddr = MultiAddress.init(multiAddrParts[0]).valueOr:
+        return err("Failed to initialize MultiAddress for Mix")
+    
+    ok((multiAddr, libp2pPubKey, libp2pPrivKey))
+
+
+proc writeMixInfoFiles(switch: Switch, myId: int, mixCount: int, publicKey: SkPublicKey, filePath: string) =
+  {.gcsafe.}:
+    var externalAddr: string = ""
+    let addresses = getInterfaces().filterIt(it.name == "eth0").mapIt(it.addresses)
+    if addresses.len < 1 or addresses[0].len < 1:
+      if inShadow and fileExists("/etc/hosts"):
+        let
+          content = readFile("/etc/hosts")
+          hostname = gethostname()
+        for line in content.splitLines():
+          if line.contains(hostname) and not line.startsWith("#"):
+            let
+              parts = line.strip().split()
+              ip = parts[0]
+            if not (ip.startsWith("127") or ip.contains("::1")):
+                externalAddr = ip
+                break
+    else:        
+      externalAddr = ($addresses[0][0].host).split(":")[0]
+    
+    if externalAddr == "":
+      info "Can't find external IP address", peer = myId
+      return
+
+    let
+      peerId = switch.peerInfo.peerId
+      externalMultiAddr = fmt"/ip4/{externalAddr}/tcp/{myPort}/p2p/{peerId}"
+
+    if myId < mixCount: #or we need to do for entire network if isMix ??
+      discard mixNodes.initMixMultiAddrByIndex(0, externalMultiAddr)
+      writeMixNodeInfoToFile(mixNodes[0], myId, filePath / fmt"nodeInfo").isOkOr:
+        error "Failed to write mix info to file", nodeId = myId, err = error
+        return
+
+      let nodePubInfo = mixNodes.getMixPubInfoByIndex(0).valueOr:
+        error "Get mix pub info by index error", nodeId = myId, err = error
+        return
+      writeMixPubInfoToFile(nodePubInfo, myId, filePath / fmt"pubInfo").isOkOr:
+        error "Failed to write mix pub info to file", nodeId = myId, err = error
+        return
+    let pubInfo = initPubInfo(externalMultiAddr, publicKey)
+    writePubInfoToFile(pubInfo, myId, filePath / fmt"libp2pPubInfo").isOkOr:
+      error "Failed to write pub info to file", nodeId = myId, err = error
+      return
+
+    info "Successfully written mix info", peer = myId, address = externalMultiAddr
+
+proc makeMixConnCb(mixProto: MixProtocol): CustomConnCreationProc =
+  #customconn callback for MixEntryConnection
+  return proc(
+      destAddr: Option[MultiAddress], destPeerId: PeerId, codec: string
+  ): Connection {.gcsafe, raises: [].} =
+    try:
+      let dest = destAddr.valueOr:
+        error "No destination address available for MixEntryConnection", destPeer = destPeerId
+        return nil
+      return mixProto.toConnection(MixDestination.init(destPeerId, dest), codec).get()
+    except CatchableError as e:
+      error "Error during execution of MixEntryConnection callback: ", err = e.msg
+      return nil
+
+
 proc main {.async.} =
+  randomize()
   let
     hostname = getHostname()
     myId = parseInt(hostname.split('-')[^1])
@@ -127,53 +246,104 @@ proc main {.async.} =
     muxer = getEnv("MUXER", "yamux")
     isAttacker = false
     rng = libp2p.newRng()
-
-  info "Host info ", host = hostname, peer = myId, muxer = muxer
-  let address = 
-    if muxer.toLowerAscii() == "quic":
+    filePath = if inShadow: "../" else: getEnv("FILEPATH", "./")
+    address = if muxer.toLowerAscii() == "quic":
       "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
-    else:
+    else: 
       "/ip4/0.0.0.0/tcp/" & $myPort
 
-  var builder = SwitchBuilder
-    .new()
-    .withRng(rng)
-    .withMaxConnections(250)
-    .withNoise()
-  
+  if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
+    error "Unknown muxer type", muxer = muxer
+    return
+
+  info "Host info ", host = hostname, peer = myId, muxer = muxer, mix = isMix, address = address
+
+  var
+    gossipSub: GossipSub
+    mixPublicKey: SkPublicKey
+    mixPrivKey: SkPrivateKey
+    builder = SwitchBuilder
+      .new()
+      .withNoise()
+      .withAddress(MultiAddress.init(address).tryGet())
+      .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
+
+  if isMix:
+    (_, mixPublicKey, mixPrivKey) = initializeMix(myId, mixCount).valueOr:
+      error "Failed to initialize mix", err = error
+      return
+    #mix protocol uses same address as yamux
+    builder = builder.withRng(crypto.newRng())
+              .withPrivateKey(PrivateKey(scheme: Secp256k1, skkey: mixPrivKey))
+  else:
+    builder = builder.withRng(rng)
+
   case muxer.toLowerAscii()
   of "quic":
-    builder = builder.withQuicTransport().withAddress(
-      MultiAddress.init(address).tryGet()
-    )
+    builder = builder.withQuicTransport()
   of "yamux":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withAddress(
-      MultiAddress.init(address).tryGet()
-    ).withYamux()
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+              .withYamux()
   of "mplex":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withAddress(
-      MultiAddress.init(address).tryGet()
-    ).withMplex()
-  
-  let
-    switch = builder.build()
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+              .withMplex()
+
+  let switch = builder.build()
+
+  if isMix:
+    writeMixInfoFiles(switch, myId, mixCount, mixPublicKey, filePath)
+    await sleepAsync(10.seconds)
+    let mixProto = MixProtocol.new(myId, mixCount, switch, filePath).valueOr:
+      error "Could not instantiate mix", err = error
+      return
+
+    let 
+      mixConn = makeMixConnCb(mixProto)
+      mixPeerSelect = proc(
+        allPeers: HashSet[PubSubPeer],
+        directPeers: HashSet[PubSubPeer],
+        meshPeers: HashSet[PubSubPeer],
+        fanoutPeers: HashSet[PubSubPeer],
+      ): HashSet[PubSubPeer] {.gcsafe, raises: [].} =
+        try:
+          return mixPeerSelection(allPeers, directPeers, meshPeers, fanoutPeers)
+        except CatchableError as e:
+          error "Error during execution of MixPeerSelection callback: ", err = e.msg
+          return initHashSet[PubSubPeer]()
+    
     gossipSub = GossipSub.init(
       switch = switch,
-      triggerSelf = true,
+      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = true,
-      )
+      customConnCallbacks = some(
+        CustomConnectionCallbacks(
+          customConnCreationCB: mixConn, customPeerSelectionCB: mixPeerSelect
+        )
+      ),
+    )
+
+    switch.mount(mixProto)
+  
+  else:
+    gossipSub = GossipSub.init(
+      switch = switch,
+      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
+      msgIdProvider = msgIdProvider,
+      verifySignature = false,
+      anonymize = true,
+    )
 
   # Metrics
   info "Starting metrics server"
   let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
-  if metricsServer.isOk() and inShadow:
+  if metricsServer.isErr:
+    error "Failed to initialize metrics server", err = metricsServer.error
+  elif inShadow:
     asyncSpawn storeMetrics(myId)
 
   gossipSub.parameters.floodPublish = true
-  #gossipSub.parameters.lazyPushThreshold = 1_000_000_000
-  #gossipSub.parameters.lazyPushThreshold = 0
   gossipSub.parameters.opportunisticGraftThreshold = -10000
   gossipSub.parameters.heartbeatInterval = 1.seconds
   gossipSub.parameters.pruneBackoff = 60.seconds
@@ -233,6 +403,26 @@ proc main {.async.} =
 
   for peerInfo in peersInfo:
     if connected > connectTo: break
+#[
+    #Discuss: Not needed!
+    if isMix:
+      let pubInfo = readPubInfoFromFile(peerInfo, filePath / fmt"libp2pPubInfo").expect(
+        "should be able to read pubinfo"
+      )
+      let (multiAddr, _) = getPubInfo(pubInfo)
+      let ma = MultiAddress.init(multiAddr).expect("should be a multiaddr")
+      info "Retrieved multiaddress", peer = peerInfo, multiAddr = ma
+
+      try:
+        let peerId = await switch.connect(ma, allowUnknownPeerId = true).wait(5.seconds)
+        connected.inc()
+      except CatchableError as exc:
+        error "Failed to dial", err = exc.msg
+        info "Waiting 15 seconds..."
+        await sleepAsync(15.seconds)
+      continue
+]#
+
     let tAddress = if inShadow:
         "pod-" & $peerInfo & ":" & $myPort                        # Shadow format
     else:
