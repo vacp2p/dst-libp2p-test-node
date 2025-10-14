@@ -1,64 +1,39 @@
-import stew/endians2, stew/byteutils, tables, strutils, os, osproc, json
+import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
-import node
+import mix_helpers, env
 import std/[strformat, random, hashes]
-import mix/[mix_node, entry_connection, mix_protocol]
-
-import libp2p, libp2p/protocols/pubsub/rpc/messages
-import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
-import libp2p/crypto/secp, libp2p/protocols/pubsub/pubsubpeer
+import mix/mix_protocol
+import libp2p, libp2p/[muxers/mplex/lpchannel, crypto/secp, multiaddress]
+import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
 
-let
-  #Env(ISMIX) to enable mix support. First mixCount peers are mix-net peers
-  isMix = existsEnv("ISMIX")
-  mixCount = parseInt(getEnv("NUMMIX", "0"))
-  inShadow = existsEnv("SHADOWENV")
-  httpPublishPort = Port(8645)            #http message injector
-  prometheusPort = Port(8008)
-  myPort = Port(5000)
-  chunks = parseInt(getEnv("FRAGMENTS", "1"))
 
 proc msgIdProvider(m: Message): Result[MessageId, ValidationResult] =
   return ok(($m.data.hash).toBytes())
 
-proc startMetricsServer(
-    serverIp: IpAddress, serverPort: Port
-): Result[MetricsHttpServerRef, string] =
-  info "Starting metrics HTTP server", serverIp = $serverIp, serverPort = $serverPort
+proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsafe.} =
+  var messagesChunks: CountTable[uint64]
 
-  let metricsServerRes = MetricsHttpServerRef.new($serverIp, serverPort)
-  if metricsServerRes.isErr():
-    return err("metrics HTTP server start failed: " & $metricsServerRes.error)
+  return proc(topic: string, data: seq[byte]) {.async, gcsafe.} =
+    let sentUint = uint64.fromBytesLE(data)
+    # warm-up
+    if sentUint < 1000000: return
 
-  let server = metricsServerRes.value
-  try:
-    waitFor server.start()
-  except CatchableError:
-    return err("metrics HTTP server start failed: " & getCurrentExceptionMsg())
+    messagesChunks.inc(sentUint)
+    if messagesChunks[sentUint] < chunks: return
+    let
+      sentMoment = nanoseconds(int64(uint64.fromBytesLE(data)))
+      sentNanosecs = nanoseconds(sentMoment - seconds(sentMoment.seconds))
+      sentDate = initTime(sentMoment.seconds, sentNanosecs)
+      diff = getTime() - sentDate
+    echo sentUint, " milliseconds: ", diff.inMilliseconds()
 
-  info "Metrics HTTP server started", serverIp = $serverIp, serverPort = $serverPort
-  ok(metricsServerRes.value)
+proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
+  return ValidationResult.Accept
 
-# log metrics if needed (useful for shadow simulations)
-proc storeMetrics(myId: int) {.async.} =
-  await sleepAsync((myId*60).milliseconds)
-  while true:
-    try:
-      let cmd = "curl -s --connect-timeout 5 --max-time 5 http://localhost:" & 
-          $prometheusPort & "/metrics >> metrics_pod-" & $myId & ".txt"
-      
-      let exitCode = execCmd(cmd)
-      if exitCode == 0:
-        info "Metrics saved for peer ", pod = myId
-      else:
-        info "Failed to fetch metrics for peer ", pod = myId, curlExitCode = $exitCode
-    except CatchableError as e:
-      info "Error storing metrics: ", error = e.msg
-    await sleepAsync(60.seconds)
 
 proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
   let
@@ -131,133 +106,91 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
-var mixNodes: MixNodes = @[]
-const mix_D* = 4 # No. of peers to forward to
-
-proc mixPeerSelection*(
-    allPeers: HashSet[PubSubPeer],
-    directPeers: HashSet[PubSubPeer],
-    meshPeers: HashSet[PubSubPeer],
-    fanoutPeers: HashSet[PubSubPeer],
-): HashSet[PubSubPeer] {.gcsafe, raises: [].} =
-  var
-    peers: HashSet[PubSubPeer]
-    allPeersSeq = allPeers.toSeq()
-  let rng = newRng()
-  rng.shuffle(allPeersSeq)
-  for p in allPeersSeq:
-    peers.incl(p)
-    if peers.len >= mix_D:
-      break
-  return peers
-
-
-proc initializeMix(myId: int, mixCount: int): 
-  Result[(MultiAddress, SkPublicKey, SkPrivateKey), string] =
-  {.gcsafe.}:
-    #We assume that first mixCount nodes are mix capable nodes
-    let (multiAddrStr, libp2pPubKey, libp2pPrivKey) =
-      if myId < mixCount:
-        mixNodes = initializeMixNodes(1, int(myPort)).valueOr:
-          return err("Could not generate Mix nodes")
-        let (ma, _, _, pubKey, privKey) = getMixNodeInfo(mixNodes[0])
-        (ma, pubKey, privKey)  
+proc initializeGossipsub(switch: Switch, anonymize: bool, mixProto: Option[MixProtocol] = none(MixProtocol)): GossipSub =
+  return GossipSub.init(
+      switch = switch,
+      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
+      msgIdProvider = msgIdProvider,
+      verifySignature = false,
+      anonymize = anonymize,
+      customConnCallbacks = if isMix and mixProto.isSome:
+        #add custom connection and peer selection callbacks for mix
+        some(CustomConnectionCallbacks(
+          customConnCreationCB: makeMixConnCb(mixProto.get()),
+          customPeerSelectionCB: makeMixPeerSelectCb()
+        ))
       else:
-        discard initializeNodes(1, int(myPort))
-        getNodeInfo(nodes[0])
-    
-    let 
-      multiAddrParts = multiAddrStr.split("/p2p/")
-      multiAddr = MultiAddress.init(multiAddrParts[0]).valueOr:
-        return err("Failed to initialize MultiAddress for Mix")
-    
-    ok((multiAddr, libp2pPubKey, libp2pPrivKey))
+        none(CustomConnectionCallbacks)
+    )
+
+proc configureGossipsubParams(gossipSub: GossipSub) =
+  gossipSub.parameters.floodPublish = true
+  gossipSub.parameters.opportunisticGraftThreshold = -10000
+  gossipSub.parameters.heartbeatInterval = 1.seconds
+  gossipSub.parameters.pruneBackoff = 60.seconds
+  gossipSub.parameters.gossipFactor = 0.25
+  gossipSub.parameters.d = 6
+  gossipSub.parameters.dLow = 4
+  gossipSub.parameters.dHigh = 8
+  gossipSub.parameters.dScore = 6
+  gossipSub.parameters.dOut = 6 div 2
+  gossipSub.parameters.dLazy = 6
+
+proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
+  gossipSub.topicParams[topic] = TopicParams(
+    topicWeight: 1,
+    firstMessageDeliveriesWeight: 1,
+    firstMessageDeliveriesCap: 30,
+    firstMessageDeliveriesDecay: 0.9
+  )
+
+  gossipSub.subscribe(topic, createMessageHandler())
+  gossipSub.addValidator([topic], messageValidator)
 
 
-proc writeMixInfoFiles(switch: Switch, myId: int, mixCount: int, publicKey: SkPublicKey, filePath: string) =
-  {.gcsafe.}:
-    var externalAddr: string = ""
-    let addresses = getInterfaces().filterIt(it.name == "eth0").mapIt(it.addresses)
-    if addresses.len < 1 or addresses[0].len < 1:
-      if inShadow and fileExists("/etc/hosts"):
-        let
-          content = readFile("/etc/hosts")
-          hostname = gethostname()
-        for line in content.splitLines():
-          if line.contains(hostname) and not line.startsWith("#"):
-            let
-              parts = line.strip().split()
-              ip = parts[0]
-            if not (ip.startsWith("127") or ip.contains("::1")):
-                externalAddr = ip
-                break
-    else:        
-      externalAddr = ($addresses[0][0].host).split(":")[0]
-    
-    if externalAddr == "":
-      info "Can't find external IP address", peer = myId
-      return
+proc connetGossipsubPeers(
+    switch: Switch, peersInfo: seq[int], muxer: string, connectTo: int
+): Future[Result[int, string]] {.async.} =
+  var connected = 0
+  for peerInfo in peersInfo:
+    if connected > connectTo: break
 
-    let
-      peerId = switch.peerInfo.peerId
-      externalMultiAddr = fmt"/ip4/{externalAddr}/tcp/{myPort}/p2p/{peerId}"
+    let tAddress = if inShadow:
+        "pod-" & $peerInfo & ":" & $myPort                        # Shadow format
+    else:
+        "pod-" & $peerInfo & ".nimp2p-service:" & $myPort         # k8s format
 
-    if myId < mixCount: #or we need to do for entire network if isMix ??
-      discard mixNodes.initMixMultiAddrByIndex(0, externalMultiAddr)
-      writeMixNodeInfoToFile(mixNodes[0], myId, filePath / fmt"nodeInfo").isOkOr:
-        error "Failed to write mix info to file", nodeId = myId, err = error
-        return
-
-      let nodePubInfo = mixNodes.getMixPubInfoByIndex(0).valueOr:
-        error "Get mix pub info by index error", nodeId = myId, err = error
-        return
-      writeMixPubInfoToFile(nodePubInfo, myId, filePath / fmt"pubInfo").isOkOr:
-        error "Failed to write mix pub info to file", nodeId = myId, err = error
-        return
-    let pubInfo = initPubInfo(externalMultiAddr, publicKey)
-    writePubInfoToFile(pubInfo, myId, filePath / fmt"libp2pPubInfo").isOkOr:
-      error "Failed to write pub info to file", nodeId = myId, err = error
-      return
-
-    info "Successfully written mix info", peer = myId, address = externalMultiAddr
-
-proc makeMixConnCb(mixProto: MixProtocol): CustomConnCreationProc =
-  #customconn callback for MixEntryConnection
-  return proc(
-      destAddr: Option[MultiAddress], destPeerId: PeerId, codec: string
-  ): Connection {.gcsafe, raises: [].} =
     try:
-      let dest = destAddr.valueOr:
-        error "No destination address available for MixEntryConnection", destPeer = destPeerId
-        return nil
-      return mixProto.toConnection(MixDestination.init(destPeerId, dest), codec).get()
-    except CatchableError as e:
-      error "Error during execution of MixEntryConnection callback: ", err = e.msg
-      return nil
+      let addrs = 
+        if muxer.toLowerAscii() == "quic":
+          let quicV1 = MultiAddress.init("/quic-v1").tryGet()
+          resolveTAddress(tAddress).mapIt(
+            MultiAddress.init(it, IPPROTO_UDP).tryGet()
+              .concat(quicV1).tryGet()
+          )
+        else:
+          resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
 
+      info "Address resolved ", theirAddress = tAddress, resolved = addrs
+      let peerId = await switch.connect(addrs[0], allowUnknownPeerId=true).wait(5.seconds)
+      connected.inc()
+      info "Connected!: current connections ", connected = $connected, target = connectTo
+    except CatchableError as exc:
+      info "Failed to dial ", theirAddress = tAddress, message = exc.msg
+      await sleepAsync(15.seconds)
+  if connected == 0:
+    return err("Failed to connect any peer")
+  elif connected < connected:
+    info "Connected to fewer peers than target", connected = connected, target = connectTo
+  return ok(connected)
 
 proc main {.async.} =
   randomize()
   let
-    hostname = getHostname()
-    myId = parseInt(hostname.split('-')[^1])
-    networkSize = parseInt(getEnv("PEERS", "1000"))
-    connectTo = parseInt(getEnv("CONNECTTO", "10"))
-    muxer = getEnv("MUXER", "yamux")
-    isAttacker = false
-    rng = libp2p.newRng()
-    filePath = if inShadow: "../" else: getEnv("FILEPATH", "./")
-    address = if muxer.toLowerAscii() == "quic":
-      "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
-    else: 
-      "/ip4/0.0.0.0/tcp/" & $myPort
-
-  if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
-    error "Unknown muxer type", muxer = muxer
-    return
-
-  info "Host info ", host = hostname, peer = myId, muxer = muxer, mix = isMix, address = address
-
+    rng = libp2p.newRng() 
+    (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
+      error "Error reading peer settings ",  err = error
+      return
   var
     gossipSub: GossipSub
     mixPublicKey: SkPublicKey
@@ -293,47 +226,20 @@ proc main {.async.} =
   if isMix:
     writeMixInfoFiles(switch, myId, mixCount, mixPublicKey, filePath)
     await sleepAsync(10.seconds)
+  if myId < mixCount:
     let mixProto = MixProtocol.new(myId, mixCount, switch, filePath).valueOr:
       error "Could not instantiate mix", err = error
       return
 
-    let 
-      mixConn = makeMixConnCb(mixProto)
-      mixPeerSelect = proc(
-        allPeers: HashSet[PubSubPeer],
-        directPeers: HashSet[PubSubPeer],
-        meshPeers: HashSet[PubSubPeer],
-        fanoutPeers: HashSet[PubSubPeer],
-      ): HashSet[PubSubPeer] {.gcsafe, raises: [].} =
-        try:
-          return mixPeerSelection(allPeers, directPeers, meshPeers, fanoutPeers)
-        except CatchableError as e:
-          error "Error during execution of MixPeerSelection callback: ", err = e.msg
-          return initHashSet[PubSubPeer]()
-    
-    gossipSub = GossipSub.init(
-      switch = switch,
-      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
-      msgIdProvider = msgIdProvider,
-      verifySignature = false,
-      anonymize = true,
-      customConnCallbacks = some(
-        CustomConnectionCallbacks(
-          customConnCreationCB: mixConn, customPeerSelectionCB: mixPeerSelect
-        )
-      ),
-    )
-
+    gossipSub = initializeGossipsub(switch, true, some(mixProto))
     switch.mount(mixProto)
-  
   else:
-    gossipSub = GossipSub.init(
-      switch = switch,
-      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
-      msgIdProvider = msgIdProvider,
-      verifySignature = false,
-      anonymize = true,
-    )
+    gossipSub = initializeGossipsub(switch, true)
+
+  configureGossipsubParams(gossipSub)
+  subscribGossipsubTopic(gossipSub, "test")
+  switch.mount(gossipSub)
+  await switch.start()
 
   # Metrics
   info "Starting metrics server"
@@ -343,120 +249,24 @@ proc main {.async.} =
   elif inShadow:
     asyncSpawn storeMetrics(myId)
 
-  gossipSub.parameters.floodPublish = true
-  gossipSub.parameters.opportunisticGraftThreshold = -10000
-  gossipSub.parameters.heartbeatInterval = 1.seconds
-  gossipSub.parameters.pruneBackoff = 60.seconds
-  gossipSub.parameters.gossipFactor = 0.25
-  gossipSub.parameters.d = 6
-  gossipSub.parameters.dLow = 4
-  gossipSub.parameters.dHigh = 8
-  gossipSub.parameters.dScore = 6
-  gossipSub.parameters.dOut = 6 div 2
-  gossipSub.parameters.dLazy = 6
-  gossipSub.topicParams["test"] = TopicParams(
-    topicWeight: 1,
-    firstMessageDeliveriesWeight: 1,
-    firstMessageDeliveriesCap: 30,
-    firstMessageDeliveriesDecay: 0.9
-  )
-
-  var messagesChunks: CountTable[uint64]
-  proc messageHandler(topic: string, data: seq[byte]) {.async.} =
-    let sentUint = uint64.fromBytesLE(data)
-    # warm-up
-    if sentUint < 1000000: return
-    #if isAttacker: return
-
-    messagesChunks.inc(sentUint)
-    if messagesChunks[sentUint] < chunks: return
-    let
-      sentMoment = nanoseconds(int64(uint64.fromBytesLE(data)))
-      sentNanosecs = nanoseconds(sentMoment - seconds(sentMoment.seconds))
-      sentDate = initTime(sentMoment.seconds, sentNanosecs)
-      diff = getTime() - sentDate
-    echo sentUint, " milliseconds: ", diff.inMilliseconds()
-
-  var
-    startOfTest: Moment
-    attackAfter = 10000.hours
-  proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
-    if isAttacker and Moment.now - startOfTest >= attackAfter:
-      return ValidationResult.Ignore
-
-    return ValidationResult.Accept
-
-  gossipSub.subscribe("test", messageHandler)
-  gossipSub.addValidator(["test"], messageValidator)
-  switch.mount(gossipSub)
-  await switch.start()
-
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
   #Wait for node building
   await sleepAsync(60.seconds)
 
-  var 
-    connected = 0
-    peersInfo = toSeq(0..<networkSize).filterIt(it != myId)
+  #connect with peers
+  var peersInfo = toSeq(0..<networkSize).filterIt(it != myId)
   rng.shuffle(peersInfo)
-
-  for peerInfo in peersInfo:
-    if connected > connectTo: break
-#[
-    #Discuss: Not needed!
-    if isMix:
-      let pubInfo = readPubInfoFromFile(peerInfo, filePath / fmt"libp2pPubInfo").expect(
-        "should be able to read pubinfo"
-      )
-      let (multiAddr, _) = getPubInfo(pubInfo)
-      let ma = MultiAddress.init(multiAddr).expect("should be a multiaddr")
-      info "Retrieved multiaddress", peer = peerInfo, multiAddr = ma
-
-      try:
-        let peerId = await switch.connect(ma, allowUnknownPeerId = true).wait(5.seconds)
-        connected.inc()
-      except CatchableError as exc:
-        error "Failed to dial", err = exc.msg
-        info "Waiting 15 seconds..."
-        await sleepAsync(15.seconds)
-      continue
-]#
-
-    let tAddress = if inShadow:
-        "pod-" & $peerInfo & ":" & $myPort                        # Shadow format
-    else:
-        "pod-" & $peerInfo & ".nimp2p-service:" & $myPort         # k8s format
-
-    info "Trying to resolve ", theirAddress = tAddress
-    
-    try:
-      let addrs = 
-        if muxer.toLowerAscii() == "quic":
-          let quicV1 = MultiAddress.init("/quic-v1").tryGet()
-          resolveTAddress(tAddress).mapIt(
-            MultiAddress.init(it, IPPROTO_UDP).tryGet()
-              .concat(quicV1).tryGet()
-          )
-        else:
-          resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
-
-      info "Address resolved ", theirAddress = tAddress, resolved = addrs
-      let peerId = await switch.connect(addrs[0], allowUnknownPeerId=true).wait(5.seconds)
-      connected.inc()
-      info "Connected!: current connections ", connected = $connected, desired = connectTo
-    except CatchableError as exc:
-      info "Failed to dial ", theirAddress = tAddress, message = exc.msg
-      await sleepAsync(15.seconds)
-  info "Mesh size ", mesh = gossipSub.mesh.getOrDefault("test").len
-  
+  discard (await connetGossipsubPeers(switch, peersInfo, muxer, connectTo)).valueOr:
+    error "Failed to establish any connections", error = error 
+    return
   await sleepAsync(5.seconds)
+  info "Mesh size ", mesh = gossipSub.mesh.getOrDefault("test").len
+
   info "Starting listening endpoint for publish controller"
   discard gossipSub.startHttpServer(myId)
 
   while true:
-    await sleepAsync(1.hours)
-
-  quit(0)
+    await sleepAsync(2.days)
 
 waitFor(main())
