@@ -47,9 +47,9 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
     nowBytes[10] = byte(chunk)
-    res = if isMix:
+    res = if mountsMix:
       await gossipSub.publish(topic, nowBytes, 
-        publishParams = some(PublishParams(skipMCache: true, useCustomConn: isMix)),
+        publishParams = some(PublishParams(skipMCache: true, useCustomConn: true)),
       )
     else:
       await gossipSub.publish(topic, nowBytes)
@@ -113,7 +113,7 @@ proc initializeGossipsub(switch: Switch, anonymize: bool, mixProto: Option[MixPr
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = anonymize,
-      customConnCallbacks = if isMix and mixProto.isSome:
+      customConnCallbacks = if mountsMix and mixProto.isSome:
         #add custom connection and peer selection callbacks for mix
         some(CustomConnectionCallbacks(
           customConnCreationCB: makeMixConnCb(mixProto.get()),
@@ -148,20 +148,10 @@ proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
   gossipSub.addValidator([topic], messageValidator)
 
 
-proc connetGossipsubPeers(
-    switch: Switch, peersInfo: seq[int], muxer: string, connectTo: int
-): Future[Result[int, string]] {.async.} =
-  var connected = 0
-  for peerInfo in peersInfo:
-    if connected > connectTo: break
-
-    let tAddress = if inShadow:
-        "pod-" & $peerInfo & ":" & $myPort                        # Shadow format
-    else:
-        "pod-" & $peerInfo & ".nimp2p-service:" & $myPort         # k8s format
-
+proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAddress], string]] {.async.} = 
+  while true:
     try:
-      let addrs = 
+      let resolvedAddrs =
         if muxer.toLowerAscii() == "quic":
           let quicV1 = MultiAddress.init("/quic-v1").tryGet()
           resolveTAddress(tAddress).mapIt(
@@ -170,19 +160,57 @@ proc connetGossipsubPeers(
           )
         else:
           resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
+      info "Address resolved", tAddress = tAddress, resolvedAddrs = resolvedAddrs
+      return ok(resolvedAddrs)
+    except CatchableError as exc:
+      if inShadow:
+        return err(exc.msg)
+      #keep trying for service mode
+      warn "Failed to resolve address", address = tAddress, error = exc.msg
+      await sleepAsync(15.seconds)
 
-      info "Address resolved ", theirAddress = tAddress, resolved = addrs
-      let peerId = await switch.connect(addrs[0], allowUnknownPeerId=true).wait(5.seconds)
+proc connectGossipsubPeers(
+  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: ref HmacDrbgContext
+): Future[Result[int, string]] {.async.} =
+  var 
+    addrs: seq[MultiAddress] = @[]
+    tAddresses: seq[string]
+    connected = 0
+
+  if inShadow:
+    var peers = toSeq(0..<networkSize).filterIt(it != myId)
+    rng.shuffle(peers)
+    #collect enough random peers to make target connections
+    let peersAddrs = peers[0..<min(connectTo * 2, peers.len)].mapIt("pod-" & $it & ":" & $myPort)
+    tAddresses = peersAddrs
+  else:
+    tAddresses = @["nimp2p-service:" & $myPort]
+
+  for tAddress in tAddresses:
+    let resolvedAddrs = (await resolveAddress(muxer, tAddress)).valueOr:
+      warn "Failed to resolve address", tAddress = tAddress, error = error
+      continue
+    addrs.add(resolvedAddrs)
+
+  rng.shuffle(addrs)
+
+  #Make target connections
+  for peer in addrs:
+    if connected > connectTo: break
+    try:
+      discard await switch.connect(peer, allowUnknownPeerId=true).wait(5.seconds)
       connected.inc()
       info "Connected!: current connections ", connected = $connected, target = connectTo
     except CatchableError as exc:
-      info "Failed to dial ", theirAddress = tAddress, message = exc.msg
+      warn "Failed to dial ", theirAddress = peer, message = exc.msg
       await sleepAsync(15.seconds)
+
   if connected == 0:
     return err("Failed to connect any peer")
-  elif connected < connected:
-    info "Connected to fewer peers than target", connected = connected, target = connectTo
+  elif connected < connectTo:
+    warn "Connected to fewer peers than target", connected = connected, target = connectTo
   return ok(connected)
+
 
 proc main {.async.} =
   randomize()
@@ -201,8 +229,8 @@ proc main {.async.} =
       .withAddress(MultiAddress.init(address).tryGet())
       .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
 
-  if isMix:
-    (_, mixPublicKey, mixPrivKey) = initializeMix(myId, mixCount).valueOr:
+  if mountsMix or usesMix:
+    (_, mixPublicKey, mixPrivKey) = initializeMix(myId).valueOr:
       error "Failed to initialize mix", err = error
       return
     #mix protocol uses same address as yamux
@@ -223,10 +251,11 @@ proc main {.async.} =
 
   let switch = builder.build()
 
-  if isMix:
-    writeMixInfoFiles(switch, myId, mixCount, mixPublicKey, filePath)
+  if mountsMix or usesMix:
+    writeMixInfoFiles(switch, myId, mixPublicKey, filePath)
     await sleepAsync(10.seconds)
-  if myId < mixCount:
+  if mountsMix:
+    #Only full-mix peers instantiate mix, and use custom callbacks
     let mixProto = MixProtocol.new(myId, mixCount, switch, filePath).valueOr:
       error "Could not instantiate mix", err = error
       return
@@ -255,18 +284,17 @@ proc main {.async.} =
   await sleepAsync(60.seconds)
 
   #connect with peers
-  var peersInfo = toSeq(0..<networkSize).filterIt(it != myId)
-  rng.shuffle(peersInfo)
-  discard (await connetGossipsubPeers(switch, peersInfo, muxer, connectTo)).valueOr:
+  discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
     error "Failed to establish any connections", error = error 
     return
+
   await sleepAsync(5.seconds)
-  info "Mesh size ", mesh = gossipSub.mesh.getOrDefault("test").len
+  info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len, 
+    peersConnected = gossipSub.gossipsub.getOrDefault("test").len
 
   info "Starting listening endpoint for publish controller"
   discard gossipSub.startHttpServer(myId)
 
-  while true:
-    await sleepAsync(2.days)
+  await sleepAsync(2.days)
 
 waitFor(main())

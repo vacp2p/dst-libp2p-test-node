@@ -3,8 +3,9 @@ import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
 let
-  isMix* = existsEnv("ISMIX")                   #Peer supports mix
-  mixCount* = parseInt(getEnv("NUMMIX", "0"))   #First mixCount peers are mix net peers
+  mountsMix* = existsEnv("MOUNTSMIX")           #Full mix-net peer
+  usesMix* = existsEnv("USESMIX")               #Supports sending mix messages
+  mixCount* = parseInt(getEnv("NUMMIX", "0"))   #Number of mix peers (mountsMix + usesMix)
   inShadow* = existsEnv("SHADOWENV")            #If Running for shadow simulator 
   httpPublishPort* = Port(8645)                 #http message injector
   prometheusPort* = Port(8008)                  #prometheus metrics
@@ -32,7 +33,7 @@ proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] 
   if connectTo >= networkSize:
     return err("Not enough peers to make target connections. Network size : " & $networkSize)
   
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, mix = isMix, mixCount = mixCount, inShadow = inShadow, address = address
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, mountsMix = mountsMix, usesMix = usesMix, mixCount = mixCount, inShadow = inShadow, address = address
 
   return ok((myId, networkSize, connectTo, muxer, filePath, address))
 
@@ -70,4 +71,5 @@ proc storeMetrics*(myId: int) {.async.} =
         info "Failed to fetch metrics for peer ", pod = myId, curlExitCode = $exitCode
     except CatchableError as e:
       info "Error storing metrics: ", error = e.msg
+      return
     await sleepAsync(5.minutes)
