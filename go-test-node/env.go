@@ -61,10 +61,6 @@ func getHostname() (string, int) {
 	}
 
 	parts := strings.Split(hostname, "-")
-	if len(parts) < 2 {
-		panic(fmt.Errorf("unexpected hostname format: %s", hostname))
-	}
-
 	myId, err := strconv.Atoi(parts[1])
 	if err != nil {
 		panic(fmt.Errorf("error parsing ID from hostname: %s", err))
