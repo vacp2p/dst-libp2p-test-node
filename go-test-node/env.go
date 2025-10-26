@@ -73,7 +73,8 @@ func getHostname() (string, int) {
 	return hostname, myId
 }
 
-func getEnvVariables() (hostname string, myId int, networkSize int, connectTo int, dAnnounce int, muxer string, addr multiaddr.Multiaddr) {
+func getEnvVariables() (hostname string, myId int, networkSize int, connectTo int,
+	dAnnounce int, muxer string, serviceName string, addr multiaddr.Multiaddr) {
 
 	logging.SetLogLevel("pubsub-test", "info")
 
@@ -82,6 +83,10 @@ func getEnvVariables() (hostname string, myId int, networkSize int, connectTo in
 	connectTo = getEnvInt("CONNECTTO", 10)
 	dAnnounce = getEnvInt("DANNOUNCE", 0) //needed for GossipSub v2.0 only
 	muxer = strings.ToLower(os.Getenv("MUXER"))
+	serviceName = os.Getenv("SERVICE")
+	if serviceName == "" {
+		serviceName = "nimp2p-service"
+	}
 
 	switch strings.ToLower(muxer) {
 	case "yamux":
@@ -94,7 +99,8 @@ func getEnvVariables() (hostname string, myId int, networkSize int, connectTo in
 		addr, _ = multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", myPort))
 	}
 
-	log.Infow("Host info", "hostname", hostname, "peer", myId, "muxer", muxer, "inShadow", inShadow, "dAnnounce", dAnnounce, "address", addr)
+	log.Infow("Host info", "hostname", hostname, "peer", myId, "muxer", muxer,
+		"inShadow", inShadow, "dAnnounce", dAnnounce, "service", serviceName, "address", addr)
 
 	return
 }

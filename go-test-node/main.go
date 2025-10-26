@@ -146,7 +146,7 @@ func startHTTPServer(ctx context.Context, ps *pubsub.PubSub, topics map[string]*
 		}
 	}()
 
-	log.Errorw("HTTP server started", "httpPort", httpPublishPort)
+	log.Infow("HTTP server started", "httpPort", httpPublishPort)
 }
 
 func configureGossipsubParams() pubsub.GossipSubParams {
@@ -205,7 +205,7 @@ func subscribeGossipsubTopic(ps *pubsub.PubSub, topicName string, topics map[str
 	return sub, nil
 }
 
-func resolveAddress(muxer string, tAddress string) (*PeerInfo, error) {
+func resolveAddress(muxer string, tAddress string) ([]*PeerInfo, error) {
 	maxRetries := 5
 	var ips []net.IP
 	var lookupErr error
@@ -218,10 +218,12 @@ func resolveAddress(muxer string, tAddress string) (*PeerInfo, error) {
 			}
 			//Reattempt service after 15 seconds
 			time.Sleep(15 * time.Second)
+		} else {
+			break
 		}
 	}
 
-	var addrs []ma.Multiaddr
+	var peerInfos []*PeerInfo
 	for _, ip := range ips {
 		var maddr ma.Multiaddr
 		var maddrErr error
@@ -236,26 +238,41 @@ func resolveAddress(muxer string, tAddress string) (*PeerInfo, error) {
 
 		if maddrErr != nil {
 			log.Errorw("Failed to create multiaddr", "error", maddrErr)
+			continue
+		}
+
+		var peerName string
+		if inShadow {
+			peerName = tAddress
 		} else {
-			addrs = append(addrs, maddr)
-			log.Infow("Address resolved", "tAddress", tAddress, "resolvedAddrs", maddr)
-			if inShadow {
-				break
+			//Do reverse lookup for hostName in k8s
+			hostnames, err := net.LookupAddr(ipStr)
+			if err != nil || len(hostnames) == 0 {
+				log.Warnw("Failed to find peerName", "ip", ipStr, "error", err)
+				continue
 			}
+			peerName = strings.Split(hostnames[0], ".")[0]
+		}
+
+		peerInfo := &PeerInfo{
+			PeerName: peerName,
+			Addrs:    []ma.Multiaddr{maddr},
+		}
+		peerInfos = append(peerInfos, peerInfo)
+		log.Infow("Address resolved", "peerName", peerName, "Multiaddress", maddr)
+		if inShadow {
+			break
 		}
 	}
 
-	if len(addrs) == 0 {
+	if len(peerInfos) == 0 {
 		return nil, fmt.Errorf("no valid addresses resolved")
 	}
 
-	return &PeerInfo{
-		PeerName: tAddress,
-		Addrs:    addrs,
-	}, nil
+	return peerInfos, nil
 }
 
-func connectToPeers(ctx context.Context, h host.Host, ps *pubsub.PubSub, myID, networkSize, connectTo int, muxer string) {
+func connectToPeers(ctx context.Context, h host.Host, myID, networkSize, connectTo int, muxer, service string) {
 
 	//var addrs []ma.Multiaddr
 	var tAddresses []string
@@ -263,7 +280,7 @@ func connectToPeers(ctx context.Context, h host.Host, ps *pubsub.PubSub, myID, n
 	rnd := rand.New(source)
 
 	if inShadow {
-		numbers := make([]int, networkSize-1)
+		numbers := make([]int, 0, networkSize-1)
 		for i := 0; i < networkSize; i++ {
 			if i != myID {
 				numbers = append(numbers, i)
@@ -279,17 +296,18 @@ func connectToPeers(ctx context.Context, h host.Host, ps *pubsub.PubSub, myID, n
 			tAddresses = append(tAddresses, fmt.Sprintf("pod-%d", numbers[i]))
 		}
 	} else {
-		tAddresses = append(tAddresses, "nimp2p-service")
+		//Use name service for k8s
+		tAddresses = append(tAddresses, service)
 	}
 
 	var peerInfos []*PeerInfo
 	for _, tAddress := range tAddresses {
-		peerInfo, err := resolveAddress(muxer, tAddress)
+		resolvedPeers, err := resolveAddress(muxer, tAddress)
 		if err != nil {
 			log.Warnw("Failed to resolve address", "tAddress", tAddress, "error", err)
 			continue
 		}
-		peerInfos = append(peerInfos, peerInfo)
+		peerInfos = append(peerInfos, resolvedPeers...)
 	}
 
 	connected := 0
@@ -330,7 +348,7 @@ func connectToPeers(ctx context.Context, h host.Host, ps *pubsub.PubSub, myID, n
 
 func main() {
 	ctx := context.Background()
-	hostname, myId, networkSize, connectTo, _, muxer, address := getEnvVariables()
+	hostname, myId, networkSize, connectTo, _, muxer, service, address := getEnvVariables()
 
 	pk := generateKey(hostname)
 	var opts []libp2p.Option
@@ -382,7 +400,7 @@ func main() {
 	time.Sleep(5 * time.Second)
 
 	// Connect to peers
-	connectToPeers(ctx, host, ps, myId, networkSize, connectTo, muxer)
+	connectToPeers(ctx, host, myId, networkSize, connectTo, muxer, service)
 
 	// Wait for mesh building
 	time.Sleep(5 * time.Second)
