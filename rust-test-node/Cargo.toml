@@ -1,0 +1,36 @@
+[package]
+name = "libp2p-gossipsub-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libp2p = { version = "0.56", features = [
+    "tokio",
+    "tcp",
+    "noise",
+    "yamux",
+    "gossipsub",
+    "identify",
+    "macros",
+    "quic",
+    "secp256k1"
+] }
+tokio = { version = "1.40", features = ["full"] }
+futures = "0.3"
+chrono = "0.4"
+byteorder = "1.5"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+warp = "0.3"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+sha2 = "0.10"
+lazy_static = "1.5"
+gethostname = "0.4"
+prometheus-client = "0.22"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
