@@ -32,7 +32,7 @@ use env::{get_peer_details, PeerConfig, start_metrics_server};
 
 // Global message counter for tracking fragments
 lazy_static::lazy_static! {
-    static ref MSG_SEEN: Arc<Mutex<HashMap<u64, u32>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref MSG_SEEN: Arc<Mutex<HashMap<i64, u32>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[derive(NetworkBehaviour)]
@@ -69,14 +69,23 @@ fn msg_id_provider(message: &gossipsub::Message) -> gossipsub::MessageId {
     gossipsub::MessageId::from(hasher.finish().to_string())
 }
 
-fn create_message_handler(message: gossipsub::Message) {
+async fn create_message_handler(message: gossipsub::Message, chunks: u32) {
     let mut cursor = Cursor::new(&message.data[0..8]);
     if let Ok(tx_time) = cursor.read_i64::<LittleEndian>() {
-        // warm-up check
         if tx_time >= 1000000 {
+            let mut message_chunks = MSG_SEEN.lock().await;
+            let count = message_chunks.entry(tx_time).or_insert(0);
+            *count += 1;
+
+            if *count < chunks {
+                return;
+            }
+
             let now = Utc::now();
             let unix_nano = now.timestamp() * 1_000_000_000 + now.nanosecond() as i64;
             println!("{} milliseconds: {}", tx_time, (unix_nano - tx_time) / 1_000_000);
+
+            message_chunks.remove(&tx_time);
         }
     }
 }
@@ -218,6 +227,7 @@ fn configure_gossipsub_params() -> gossipsub::Config {
         .mesh_outbound_min(3)
         .gossip_lazy(6)
         .opportunistic_graft_peers(0)
+        .max_transmit_size(1024 * 1024)
         .build()
         .expect("Valid gossipsub configuration")
 }
@@ -304,7 +314,7 @@ async fn connect_gossipsub_peers(
             .map(|id| format!("pod-{}:{}", id, env::MY_PORT))
             .collect()
     } else {
-        vec![format!("nimp2p-service:{}", env::MY_PORT)]
+        vec![format!("{}:{}", config.service, env::MY_PORT)]
     };
     
     let mut resolved_addrs = Vec::new();
@@ -445,7 +455,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         message,
                         ..
                     })) => {
-                        create_message_handler(message);
+                        create_message_handler(message, config.chunks).await;
                     }
                     SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
                         peer_id,

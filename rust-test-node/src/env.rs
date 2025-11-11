@@ -16,6 +16,7 @@ pub struct PeerConfig {
     pub chunks: u32,
     pub muxer: String,
     pub address: String,
+    pub service: String,
     pub in_shadow: bool,
 }
 
@@ -43,6 +44,9 @@ pub fn get_peer_details() -> Result<PeerConfig, String> {
     let muxer = env::var("MUXER")
         .unwrap_or_else(|_| "yamux".to_string())
         .to_lowercase();
+
+    let service = env::var("SERVICE")
+        .unwrap_or_else(|_| "nimp2p-service".to_string());
     
     let in_shadow = env::var("SHADOWENV").is_ok();
     
@@ -65,19 +69,12 @@ pub fn get_peer_details() -> Result<PeerConfig, String> {
     }
     
     let config = PeerConfig {
-        hostname: hostname.clone(),
-        my_id,
-        network_size,
-        connect_to,
-        chunks,
-        muxer: muxer.clone(),
-        address: address.clone(),
-        in_shadow,
+        hostname, my_id, network_size, connect_to, chunks, muxer, address, service, in_shadow,
     };
     
     info!(
         "Host info hostname={}, peer={}, muxer={}, inShadow={}, address={}",
-        hostname, my_id, muxer, in_shadow, address
+        config.hostname, config.my_id, config.muxer, config.in_shadow, config.address
     );
     
     Ok(config)
