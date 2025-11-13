@@ -5,6 +5,7 @@ use libp2p::{
     noise,
     swarm::{NetworkBehaviour, SwarmEvent, dial_opts::DialOpts},
     tcp, yamux, Multiaddr,
+    metrics::{Metrics, Registry, Recorder}
 };
 use futures::stream::StreamExt;
 use std::{
@@ -23,14 +24,14 @@ use tokio::{
 };
 use chrono::{Utc, Timelike};
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
-use rand::{seq::SliceRandom, thread_rng};
-use warp::{Filter};
+use rand::{seq::SliceRandom, rng};
+use warp::Filter;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use env::{get_peer_details, PeerConfig, start_metrics_server};
+use env::{get_peer_details, PeerConfig, start_metrics_server, store_metrics};
 
-// Global message counter for tracking fragments
+// Fragment counter for message fragmentation
 lazy_static::lazy_static! {
     static ref MSG_SEEN: Arc<Mutex<HashMap<i64, u32>>> = Arc::new(Mutex::new(HashMap::new()));
 }
@@ -97,7 +98,7 @@ async fn publish_new_message(
     let now = Utc::now();
     let now_nano = now.timestamp() * 1_000_000_000 + now.nanosecond() as i64;
     
-    // Create payload with timestamp
+    // create payload with timestamp, so the receiver can discover elapsed time
     let mut buffer = vec![0u8; cmd.msg_size / cmd.chunks as usize];
     let mut cursor = &mut buffer[..8];
     cursor.write_i64::<LittleEndian>(now_nano).unwrap();
@@ -106,7 +107,7 @@ async fn publish_new_message(
     let mut res = 0;
     let mut publish_error = None;
     
-    // Publish fragments
+    // To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
     for chunk in 0..cmd.chunks {
         if buffer.len() > 10 {
             buffer[10] = chunk as u8;
@@ -134,7 +135,7 @@ async fn publish_new_message(
     let _ = cmd.response_tx.send(response);
 }
 
-// Start HTTP server with channel to communicate with swarm
+// http endpoint for detached controller
 async fn start_http_server(
     publish_tx: mpsc::Sender<PublishCommand>,
     config: PeerConfig,
@@ -227,6 +228,7 @@ fn configure_gossipsub_params() -> gossipsub::Config {
         .mesh_outbound_min(3)
         .gossip_lazy(6)
         .opportunistic_graft_peers(0)
+        //set max message size to 1MB
         .max_transmit_size(1024 * 1024)
         .build()
         .expect("Valid gossipsub configuration")
@@ -300,7 +302,7 @@ async fn connect_gossipsub_peers(
     config: &PeerConfig
 ) -> Result<u32, Box<dyn Error>> {
 
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     let t_addresses: Vec<String> = if config.in_shadow {
         let mut peers: Vec<usize> = (0..config.network_size)
@@ -372,6 +374,22 @@ async fn connect_gossipsub_peers(
     }
 }
 
+fn build_behaviour(
+    key: &libp2p::identity::Keypair,
+    metrics: &mut Registry,
+) -> MyBehaviour {
+    let gossipsub_config = configure_gossipsub_params();
+    let mut gossipsub = gossipsub::Behaviour::new(
+        gossipsub::MessageAuthenticity::Signed(key.clone()),
+        gossipsub_config,
+    ).expect("Failed to create gossipsub");
+
+    gossipsub =
+        gossipsub.with_metrics(metrics, gossipsub::MetricsConfig::default());
+
+    MyBehaviour { gossipsub }
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -381,19 +399,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
     let config = get_peer_details()?;
 
+    let mut metric_registry = Registry::default();
+
     let mut swarm = if config.muxer == "quic" {
         //quic transport
         libp2p::SwarmBuilder::with_new_identity()
             .with_tokio()
             .with_quic()
-            .with_behaviour(|key| {
-                let gossipsub_config = configure_gossipsub_params();
-                let gossipsub = gossipsub::Behaviour::new(
-                    gossipsub::MessageAuthenticity::Signed(key.clone()),
-                    gossipsub_config,
-                )?; 
-                Ok(MyBehaviour { gossipsub })
-            })?
+            .with_bandwidth_metrics(&mut metric_registry)
+            .with_behaviour(|key| {Ok(build_behaviour(key, &mut metric_registry))})?
             .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
             .build()
     } else {
@@ -405,14 +419,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 noise::Config::new,
                 yamux::Config::default,
             )?
-            .with_behaviour(|key| {
-                let gossipsub_config = configure_gossipsub_params();
-                let gossipsub = gossipsub::Behaviour::new(
-                    gossipsub::MessageAuthenticity::Signed(key.clone()),
-                    gossipsub_config,
-                )?; 
-                Ok(MyBehaviour { gossipsub })
-            })?
+            .with_bandwidth_metrics(&mut metric_registry)
+            .with_behaviour(|key| {Ok(build_behaviour(key, &mut metric_registry))})?
             .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
             .build()
     };
@@ -423,7 +431,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     swarm.listen_on(config.address.parse()?)?;
     
     // Start metrics server
-    start_metrics_server().await;
+    let metrics = Metrics::new(&mut metric_registry);
+    let registry_arc = Arc::new(metric_registry);
+    start_metrics_server(registry_arc.clone()).await;
+
+    tokio::spawn(store_metrics(registry_arc.clone(), config.my_id, 300));
     
     // Wait for node initialization before connecting with peers
     sleep(Duration::from_secs(60)).await;
@@ -450,18 +462,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 publish_new_message(cmd, &mut swarm).await;
             }
             event = swarm.select_next_some() => {
+                metrics.record(&event);
+
                 match event {
-                    SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                        message,
-                        ..
-                    })) => {
-                        create_message_handler(message, config.chunks).await;
-                    }
-                    SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed {
-                        peer_id,
-                        ..
-                    })) => {
-                        info!("Peer {} subscribed to topic", peer_id);
+                    SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(ref gossipsub_event)) => {
+                        metrics.record(gossipsub_event);
+                        match gossipsub_event {
+                            gossipsub::Event::Message { message, .. } => {
+                                create_message_handler(message.clone(), config.chunks).await;
+                            }
+                            gossipsub::Event::Subscribed { peer_id, topic } => {
+                                info!("Peer {} subscribed to topic {:?}", peer_id, topic);
+                            }
+                            gossipsub::Event::Unsubscribed { peer_id, topic } => {
+                                info!("Peer {} unsubscribed from topic {:?}", peer_id, topic);
+                            }
+                            _ => {
+                                
+                            }
+                        }
                     }
                     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                         info!("Connection established with {}", peer_id);

@@ -911,12 +911,12 @@ dependencies = [
 
 [[package]]
 name = "gethostname"
-version = "0.4.3"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0176e0459c2e4a1fe232f984bca6890e681076abb9934f6cea7c326f3fc47818"
+checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
 dependencies = [
- "libc",
- "windows-targets 0.48.5",
+ "rustix",
+ "windows-link",
 ]
 
 [[package]]
@@ -1657,6 +1657,7 @@ dependencies = [
  "libp2p-core",
  "libp2p-identity",
  "libp2p-swarm",
+ "prometheus-client",
  "quick-protobuf",
  "quick-protobuf-codec",
  "rand 0.8.5",
@@ -1664,27 +1665,6 @@ dependencies = [
  "sha2",
  "tracing",
  "web-time",
-]
-
-[[package]]
-name = "libp2p-gossipsub-test"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "chrono",
- "futures",
- "gethostname",
- "lazy_static",
- "libp2p",
- "prometheus-client 0.22.3",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "warp",
 ]
 
 [[package]]
@@ -1760,7 +1740,7 @@ dependencies = [
  "libp2p-identity",
  "libp2p-swarm",
  "pin-project",
- "prometheus-client 0.23.1",
+ "prometheus-client",
  "web-time",
 ]
 
@@ -2430,18 +2410,6 @@ dependencies = [
 
 [[package]]
 name = "prometheus-client"
-version = "0.22.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "504ee9ff529add891127c4827eb481bd69dc0ebc72e9a682e187db4caa60c3ca"
-dependencies = [
- "dtoa",
- "itoa",
- "parking_lot",
- "prometheus-client-derive-encode",
-]
-
-[[package]]
-name = "prometheus-client"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf41c1a7c32ed72abe5082fb19505b969095c12da9f5732a4bc9878757fd087c"
@@ -2712,6 +2680,28 @@ dependencies = [
  "nix",
  "thiserror 1.0.69",
  "tokio",
+]
+
+[[package]]
+name = "rust-test-node"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "chrono",
+ "futures",
+ "gethostname",
+ "lazy_static",
+ "libp2p",
+ "libp2p-gossipsub",
+ "prometheus-client",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "warp",
 ]
 
 [[package]]

@@ -1,7 +1,14 @@
 use std::env;
-use std::net::SocketAddr;
+//use std::net::SocketAddr;
+use std::sync::Arc;
+use std::fs::OpenOptions;
+use std::io::Write;
+use tokio::time::{interval, Duration};
+use prometheus_client::encoding::text::encode;
+
 use warp::{Filter};
-use tracing::{info};
+use tracing::{info, warn};
+//use libp2p::metrics::Registry;
 
 pub const MY_PORT: u16 = 5000;
 pub const HTTP_PUBLISH_PORT: u16 = 8645;
@@ -80,17 +87,67 @@ pub fn get_peer_details() -> Result<PeerConfig, String> {
     Ok(config)
 }
 
-// Metrics server
-pub async fn start_metrics_server() {
+//Prometheus metrics
+pub async fn start_metrics_server(registry: Arc<libp2p::metrics::Registry>) {
+
     let metrics = warp::path!("metrics")
-        .map(|| "# Metrics endpoint active\n");
+        .and(warp::any().map(move || registry.clone()))
+        .map(|registry: Arc<libp2p::metrics::Registry>| {
+
+            let mut buffer = String::new();
+            if let Err(e) = encode(&mut buffer, &*registry) {
+                warn!("Failed to encode metrics: {}", e);
+                buffer = "Failed to encode metrics".to_string();
+            }
+            warp::reply::with_header(
+                buffer,
+                "Content-Type",
+                "text/plain; version=0.0.4",
+            )
+        });
     
-    let addr: SocketAddr = ([0, 0, 0, 0], PROMETHEUS_PORT).into();
-    info!("Starting metrics HTTP server, serverIp=0.0.0.0, serverPort={}", PROMETHEUS_PORT);
-    
-    tokio::spawn(async move {
-        warp::serve(metrics).run(addr).await;
-    });
-    
-    info!("Metrics HTTP server started, serverIp=0.0.0.0, serverPort={}", PROMETHEUS_PORT);
+    let addr: std::net::SocketAddr = ([0, 0, 0, 0], PROMETHEUS_PORT).into();
+    info!("Prometheus metrics server started at http://0.0.0.0:{}/metrics", PROMETHEUS_PORT);
+    tokio::spawn(warp::serve(metrics).run(addr));
+}
+
+//log metrics if needed (useful for shadow simulations)
+pub async fn store_metrics(
+    registry_arc: Arc<libp2p::metrics::Registry>,
+    peer_id: usize,
+    interval_sec: u64,
+) {
+
+    tokio::time::sleep(Duration::from_millis((peer_id as u64) * 60)).await;
+    let filename = format!("metrics_pod-{}.txt", peer_id);
+    let mut interval = interval(Duration::from_secs(interval_sec));
+
+    loop {
+        interval.tick().await;
+
+        let mut buffer = String::new();
+        if let Err(e) = encode(&mut buffer, &*registry_arc) {
+            warn!("Failed to encode metrics for peer {}: {}", peer_id, e);
+            continue;
+        }
+
+        match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&filename)
+        {
+            Ok(mut file) => {
+                writeln!(file, "\n# Metrics snapshot at {}", chrono::Utc::now()).ok();
+
+                if let Err(e) = file.write_all(buffer.as_bytes()) {
+                    warn!("Failed to write metrics for peer {}: {}", peer_id, e);
+                } else {
+                    info!("Metrics saved for peer {}", peer_id);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to open metrics file for peer {}: {}", peer_id, e);
+            }
+        }
+    }
 }
