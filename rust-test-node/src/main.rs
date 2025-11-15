@@ -398,7 +398,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .init();
     
     let config = get_peer_details()?;
-
     let mut metric_registry = Registry::default();
 
     let mut swarm = if config.muxer == "quic" {
@@ -425,17 +424,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .build()
     };
     
-    let topic = subscribe_gossipsub_topic(&mut swarm, "test")?;
-    
-    // Start listening
+    // Subscribe topic and start listening
+    let topic = subscribe_gossipsub_topic(&mut swarm, "test")?;    
     swarm.listen_on(config.address.parse()?)?;
     
     // Start metrics server
     let metrics = Metrics::new(&mut metric_registry);
     let registry_arc = Arc::new(metric_registry);
-    start_metrics_server(registry_arc.clone()).await;
-
-    tokio::spawn(store_metrics(registry_arc.clone(), config.my_id, 300));
+    if !config.in_shadow {
+        start_metrics_server(registry_arc.clone()).await;    
+    } else {
+        //For shadow, we log metrics from metrics registry
+        tokio::spawn(store_metrics(registry_arc.clone(), config.my_id, 300));
+    }
     
     // Wait for node initialization before connecting with peers
     sleep(Duration::from_secs(60)).await;
