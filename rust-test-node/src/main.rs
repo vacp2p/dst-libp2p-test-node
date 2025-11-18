@@ -281,7 +281,7 @@ async fn resolve_address(t_address: &str, in_shadow: bool, muxer: &str) -> Resul
                             _ => format!("/ip4/{}/tcp/{}", addr.ip(), env::MY_PORT),
                         };
                         addrs.push(formatted_addr.clone());
-                        info!("Address resolved, tAddress = {}, resolved = {}", t_address, formatted_addr.clone());                        
+                        info!("Address resolved, tAddress = {}, resolved = {}", t_address, formatted_addr.clone());
                     }
                 }
                 return Ok(addrs);
@@ -318,7 +318,7 @@ async fn connect_gossipsub_peers(
     } else {
         vec![format!("{}:{}", config.service, env::MY_PORT)]
     };
-    
+
     let mut resolved_addrs = Vec::new();
     for t_address in &t_addresses {
         match resolve_address(t_address, config.in_shadow, &config.muxer).await {
@@ -353,17 +353,15 @@ async fn connect_gossipsub_peers(
     //handle connection events
     let timeout = tokio::time::Instant::now() + Duration::from_secs(20);
     while tokio::time::Instant::now() < timeout {
+        #[allow(clippy::collapsible_match)]
         if let Ok(Some(event)) = tokio::time::timeout(
-            Duration::from_millis(100), 
+            Duration::from_millis(100),
             swarm.next()
         ).await {
-            match event {
-                SwarmEvent::ConnectionEstablished { .. } => {}
-                _ => {}
-            }
+            if let SwarmEvent::ConnectionEstablished { .. } = event {}
         }
     }
-    
+
     if connected == 0 {
         Err("Failed to connect any peers".into())
     } else {
@@ -396,7 +394,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_ansi(false)
         .init();
-    
+
     let config = get_peer_details()?;
     let mut metric_registry = Registry::default();
 

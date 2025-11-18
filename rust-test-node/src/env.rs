@@ -95,7 +95,7 @@ pub async fn start_metrics_server(registry: Arc<libp2p::metrics::Registry>) {
         .map(|registry: Arc<libp2p::metrics::Registry>| {
 
             let mut buffer = String::new();
-            if let Err(e) = encode(&mut buffer, &*registry) {
+            if let Err(e) = encode(&mut buffer, &registry) {
                 warn!("Failed to encode metrics: {}", e);
                 buffer = "Failed to encode metrics".to_string();
             }
@@ -126,7 +126,7 @@ pub async fn store_metrics(
         interval.tick().await;
 
         let mut buffer = String::new();
-        if let Err(e) = encode(&mut buffer, &*registry_arc) {
+        if let Err(e) = encode(&mut buffer, &registry_arc) {
             warn!("Failed to encode metrics for peer {}: {}", peer_id, e);
             continue;
         }
