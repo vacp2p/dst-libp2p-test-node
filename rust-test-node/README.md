@@ -1,6 +1,6 @@
 # Rust-libP2P GossipSub Test Node
 
-The [rust-libp2p](https://github.com/libp2p/rust-libp2p) based test node provides a flexible and extensible environment for GossipSub experiments. It supports yamux/quic transports, and follows the same features and architecture as in the the [nim-libp2p](https://github.com/vacp2p/dst-libp2p-test-node) and [go-libp2p](https://github.com/vacp2p/dst-libp2p-test-node/tree/master/go-test-node) test nodes.
+The [rust-libp2p](https://github.com/libp2p/rust-libp2p) based test node provides a flexible and extensible environment for GossipSub experiments. It supports yamux/quic transports, and follows the same features and architecture as in the the `nim-libp2p` and `go-libp2p` [test nodes](https://github.com/vacp2p/dst-libp2p-test-node).
 
 ## Features
 
@@ -18,7 +18,7 @@ The [rust-libp2p](https://github.com/libp2p/rust-libp2p) based test node provide
 - `CONNECTTO` — Target number of peers to dial (default: `10`)
 - `MUXER` — Stream multiplexer (default: `yamux`)
 - `FRAGMENTS` — Number of message fragments (default: `1`)
-- `SHADOWENV` — Whether running in shadow simulator (default: `not set`)
+- `SHADOWENV` — Whether running in shadow simulator (default: `false`)
 - `SERVICE` — K8s service name for peer discovery (default: `nimp2p-service`) 
 
 

@@ -353,7 +353,6 @@ async fn connect_gossipsub_peers(
     //handle connection events
     let timeout = tokio::time::Instant::now() + Duration::from_secs(20);
     while tokio::time::Instant::now() < timeout {
-        #[allow(clippy::collapsible_match)]
         if let Ok(Some(event)) = tokio::time::timeout(
             Duration::from_millis(100),
             swarm.next()

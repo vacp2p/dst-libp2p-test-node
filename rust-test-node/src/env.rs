@@ -1,14 +1,11 @@
 use std::env;
-//use std::net::SocketAddr;
 use std::sync::Arc;
 use std::fs::OpenOptions;
 use std::io::Write;
 use tokio::time::{interval, Duration};
 use prometheus_client::encoding::text::encode;
-
 use warp::{Filter};
 use tracing::{info, warn};
-//use libp2p::metrics::Registry;
 
 pub const MY_PORT: u16 = 5000;
 pub const HTTP_PUBLISH_PORT: u16 = 8645;
@@ -55,7 +52,10 @@ pub fn get_peer_details() -> Result<PeerConfig, String> {
     let service = env::var("SERVICE")
         .unwrap_or_else(|_| "nimp2p-service".to_string());
     
-    let in_shadow = env::var("SHADOWENV").is_ok();
+    let in_shadow = env::var("SHADOWENV")
+        .unwrap_or_else(|_| "false".to_string())
+        .to_lowercase()
+        == "true";
     
     let address = match muxer.as_str() {
         "quic" => format!("/ip4/0.0.0.0/udp/{}/quic-v1", MY_PORT),
