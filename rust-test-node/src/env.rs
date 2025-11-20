@@ -53,9 +53,8 @@ pub fn get_peer_details() -> Result<PeerConfig, String> {
         .unwrap_or_else(|_| "nimp2p-service".to_string());
     
     let in_shadow = env::var("SHADOWENV")
-        .unwrap_or_else(|_| "false".to_string())
-        .to_lowercase()
-        == "true";
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
     
     let address = match muxer.as_str() {
         "quic" => format!("/ip4/0.0.0.0/udp/{}/quic-v1", MY_PORT),
