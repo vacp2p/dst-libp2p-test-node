@@ -184,7 +184,8 @@ proc connectGossipsubPeers(
     let peersAddrs = peers[0..<min(connectTo * 2, peers.len)].mapIt("pod-" & $it & ":" & $myPort)
     tAddresses = peersAddrs
   else:
-    tAddresses = @["nimp2p-service:" & $myPort]
+    let serviceName = getEnv("SERVICE", "nimp2p-service")
+    tAddresses = @[serviceName & ":" & $myPort]
 
   for tAddress in tAddresses:
     let resolvedAddrs = (await resolveAddress(muxer, tAddress)).valueOr:
