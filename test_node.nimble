@@ -10,5 +10,4 @@ skipDirs      = @[]
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
           "libp2p",
-          "https://github.com/vacp2p/mix",
           "ggplotnim"
