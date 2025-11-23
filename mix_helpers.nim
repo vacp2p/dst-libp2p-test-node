@@ -1,14 +1,12 @@
 import os, strutils, sequtils, std/strformat
 import chronos
-import node, env
+import env
 from nativesockets import getHostname
-
-import mix/[mix_node, entry_connection, mix_protocol]
 import libp2p, libp2p/[muxers/mplex/lpchannel, crypto/secp, multiaddress, peerid]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
+import libp2p/protocols/[mix/mix_node, mix/entry_connection, mix/mix_protocol]
 
 var mixNodes: MixNodes
-
 
 proc mixPeerSelection*(
     allPeers: HashSet[PubSubPeer],
@@ -50,7 +48,24 @@ proc makeMixConnCb*(mixProto: MixProtocol): CustomConnCreationProc =
       let dest = destAddr.valueOr:
         error "No destination address available for MixEntryConnection", destPeer = destPeerId
         return nil
-      return mixProto.toConnection(MixDestination.init(destPeerId, dest), codec).get()
+      
+      info "Creating mix connection", destPeerId = destPeerId, destAddr = dest
+
+      let params = MixParameters(
+        expectReply: Opt.some(false),
+        numSurbs: Opt.some(0'u8)
+      )
+      let connResult = mixProto.toConnection(
+        MixDestination.init(destPeerId, dest), 
+        codec,
+        params
+      ).valueOr:
+        error "Failed to create mix connection"
+        return nil
+
+      info "Mix connection created successfully", destPeerId = destPeerId
+      return connResult
+
     except CatchableError as e:
       error "Error during execution of MixEntryConnection callback: ", err = e.msg
       return nil
@@ -58,28 +73,31 @@ proc makeMixConnCb*(mixProto: MixProtocol): CustomConnCreationProc =
 proc initializeMix*(myId: int): 
   Result[(MultiAddress, SkPublicKey, SkPrivateKey), string] =
   {.gcsafe.}:
-    let (multiAddrStr, libp2pPubKey, libp2pPrivKey) =
-      if mountsMix:
-        mixNodes = initializeMixNodes(1, int(myPort)).valueOr:
-          return err("Could not generate Mix nodes")
-        let (ma, _, _, pubKey, privKey) = getMixNodeInfo(mixNodes[0])
-        (ma, pubKey, privKey)  
-      else:
-        discard initializeNodes(1, int(myPort))
-        getNodeInfo(nodes[0])
-    
-    let 
-      multiAddrParts = multiAddrStr.split("/p2p/")
-      multiAddr = MultiAddress.init(multiAddrParts[0]).valueOr:
-        return err("Failed to initialize MultiAddress for Mix")
-    
-    ok((multiAddr, libp2pPubKey, libp2pPrivKey))
+    if mountsMix:
+      mixNodes = initializeMixNodes(1, int(myPort)).valueOr:
+        return err("Could not generate Mix nodes: " & error)
 
+      let (peerId, multiAddr, mixPubKey, mixPrivKey, libp2pPubKey, libp2pPrivKey) = mixNodes[0].get()
+      ok((multiAddr, libp2pPubKey, libp2pPrivKey))
+    else:
+      let
+        rng = newRng()
+        keyPair = SkKeyPair.random(rng[])
+        pubKeyProto = PublicKey(scheme: Secp256k1, skkey: keyPair.pubkey)
+        peerId = PeerId.init(pubKeyProto).get()
+        multiAddr = MultiAddress.init(
+          #fmt"/ip4/0.0.0.0/tcp/{myPort}/p2p/{peerId}"
+          fmt"/ip4/0.0.0.0/tcp/{myPort}"
+        ).valueOr:
+          return err("Failed to create multiaddress")
+
+      ok((multiAddr, keyPair.pubkey, keyPair.seckey))
 
 proc writeMixInfoFiles*(switch: Switch, myId: int, publicKey: SkPublicKey, filePath: string) =
   {.gcsafe.}:
     var externalAddr: string = ""
     let addresses = getInterfaces().filterIt(it.name == "eth0").mapIt(it.addresses)
+
     if addresses.len < 1 or addresses[0].len < 1:
       if inShadow and fileExists("/etc/hosts"):
         let
@@ -102,24 +120,25 @@ proc writeMixInfoFiles*(switch: Switch, myId: int, publicKey: SkPublicKey, fileP
 
     let
       peerId = switch.peerInfo.peerId
-      externalMultiAddr = fmt"/ip4/{externalAddr}/tcp/{myPort}/p2p/{peerId}"
+      externalMultiAddr = MultiAddress.init(
+        fmt"/ip4/{externalAddr}/tcp/{myPort}"
+      ).valueOr:
+        error "Failed to create external multiaddress", err = error
+        return
 
     if mountsMix:
-      discard mixNodes.initMixMultiAddrByIndex(0, externalMultiAddr)
-      writeMixNodeInfoToFile(mixNodes[0], myId, filePath / fmt"nodeInfo").isOkOr:
-        error "Failed to write mix info to file", nodeId = myId, err = error
+      discard mixNodes.initMixMultiAddrByIndex(0, peerId, externalMultiAddr)
+
+      mixNodes[0].writeToFile(myId, filePath / "nodeInfo").isOkOr:
+        error "Failed to write mix node info to file", nodeId = myId, err = error
         return
 
       let nodePubInfo = mixNodes.getMixPubInfoByIndex(0).valueOr:
         error "Get mix pub info by index error", nodeId = myId, err = error
         return
-      writeMixPubInfoToFile(nodePubInfo, myId, filePath / fmt"pubInfo").isOkOr:
+
+      nodePubInfo.writeToFile(myId, filePath / "pubInfo").isOkOr:
         error "Failed to write mix pub info to file", nodeId = myId, err = error
         return
-    let pubInfo = initPubInfo(externalMultiAddr, publicKey)
-    writePubInfoToFile(pubInfo, myId, filePath / fmt"libp2pPubInfo").isOkOr:
-      error "Failed to write pub info to file", nodeId = myId, err = error
-      return
 
     info "Successfully written mix info", peer = myId, address = externalMultiAddr
-

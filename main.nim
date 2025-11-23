@@ -2,9 +2,9 @@ import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
 import mix_helpers, env
 import std/[strformat, random, hashes]
-import mix/mix_protocol
-import libp2p, libp2p/[muxers/mplex/lpchannel, crypto/secp, multiaddress]
+import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
+import libp2p/protocols/[mix, mix/mix_protocol]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
@@ -184,7 +184,8 @@ proc connectGossipsubPeers(
     let peersAddrs = peers[0..<min(connectTo * 2, peers.len)].mapIt("pod-" & $it & ":" & $myPort)
     tAddresses = peersAddrs
   else:
-    tAddresses = @["nimp2p-service:" & $myPort]
+    let serviceName = getEnv("SERVICE", "nimp2p-service")
+    tAddresses = @[serviceName & ":" & $myPort]
 
   for tAddress in tAddresses:
     let resolvedAddrs = (await resolveAddress(muxer, tAddress)).valueOr:
@@ -230,9 +231,13 @@ proc main {.async.} =
       .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
 
   if mountsMix or usesMix:
-    (_, mixPublicKey, mixPrivKey) = initializeMix(myId).valueOr:
+    let initResult = initializeMix(myId).valueOr:
       error "Failed to initialize mix", err = error
       return
+    let multiAddr = initResult[0]
+    mixPublicKey = initResult[1]
+    mixPrivKey = initResult[2]
+
     #mix protocol uses same address as yamux
     builder = builder.withRng(crypto.newRng())
               .withPrivateKey(PrivateKey(scheme: Secp256k1, skkey: mixPrivKey))
@@ -254,12 +259,13 @@ proc main {.async.} =
   if mountsMix or usesMix:
     writeMixInfoFiles(switch, myId, mixPublicKey, filePath)
     await sleepAsync(10.seconds)
+
   if mountsMix:
-    #Only full-mix peers instantiate mix, and use custom callbacks
     let mixProto = MixProtocol.new(myId, mixCount, switch, filePath).valueOr:
       error "Could not instantiate mix", err = error
       return
 
+    mixProto.registerDestReadBehavior("/meshsub/1.2.0", readLp(1000))
     gossipSub = initializeGossipsub(switch, true, some(mixProto))
     switch.mount(mixProto)
   else:
@@ -281,6 +287,7 @@ proc main {.async.} =
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
   #Wait for node building
+  info "GossipSub codecs registered", codecs = gossipSub.codecs
   await sleepAsync(60.seconds)
 
   #connect with peers
