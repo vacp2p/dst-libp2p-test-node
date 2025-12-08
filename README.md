@@ -1,14 +1,15 @@
 ## libp2p GossipSub Test Nodes
 
-This repository contains nim-libp2p and go-libp2p based implementations of GossipSub test nodes that can run in both [Kubernetes (K8s)](https://kubernetes.io/) and [Shadow simulator](https://github.com/shadow/shadow) environments.
+This repository contains [nim-libp2p](https://github.com/vacp2p/nim-libp2p), [go-libp2p](https://github.com/libp2p/go-libp2p) and [rust-libp2p](https://github.com/libp2p/rust-libp2p) based implementations of GossipSub test nodes that can run in both [Kubernetes (K8s)](https://kubernetes.io/) and [Shadow simulator](https://github.com/shadow/shadow) environments.
 
 ### Overview
 
-These test nodes are designed for performance testing and evaluation of libp2p's GossipSub protocol under various network conditions. Both implementations support:
+These test nodes are designed for performance testing and evaluation of libp2p's GossipSub protocol under various network conditions. The implementations support:
 
 - Configurable test node parameters
 - Kubernetes and shadow deployment
 - Multi-transport support (Mplex, Yamux, QUIC)
+- Mix protocol support (for nim-libp2p)
 - Prometheus metrics collection
 - HTTP-based message injection for dynamic test configuration
 
@@ -19,7 +20,7 @@ Node/test-specific details are available in corresponding directories.
 
 Peers use random (ID-based) peer selection in the shadow simulator, and a DNS-based peer discovery service in K8s to make target number of connections. After required connections are made, each peer exposes an HTTP endpoint for receiving publish commands from a [remote message injector](https://github.com/vacp2p/10ksim/blob/master/deployment-utilities/docker_utilities/nimlibp2p/publisher_headless/README.md).
 
-Every publisher embeds a timestamp before publishing messages. If fragmentation is required, the publisher breaks messages into desired fragments and embeds fragment numbers. The receiver accumulates fragments and logs elapsed time. 
+Every publisher embeds a timestamp before publishing messages. If fragmentation is required, the publisher breaks messages into desired fragments and embeds fragment numbers. The receiver accumulates fragments and logs the elapsed time. 
 
 All peers expose Prometheus metrics for detailed insights.
 
