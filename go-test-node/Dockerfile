@@ -1,5 +1,5 @@
 # Create the build image
-FROM golang:1.25.3-bookworm as build
+FROM golang:1.25.3-bookworm AS build
 
 # Copy files to working directory, download dependencies for better caching
 WORKDIR /node
