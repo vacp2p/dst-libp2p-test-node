@@ -3,15 +3,15 @@ import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
 let
-  mountsMix* = existsEnv("MOUNTSMIX")           #Full mix-net peer
-  usesMix* = existsEnv("USESMIX")               #Supports sending mix messages
-  mixCount* = parseInt(getEnv("NUMMIX", "0"))   #Number of mix peers (mountsMix + usesMix)
-  inShadow* = existsEnv("SHADOWENV")            #If Running for shadow simulator 
-  httpPublishPort* = Port(8645)                 #http message injector
-  prometheusPort* = Port(8008)                  #prometheus metrics
-  myPort* = Port(5000)                          #libp2p port
-  chunks* = parseInt(getEnv("FRAGMENTS", "1"))  #No. of fragments for each message
-  mix_D* = parseInt(getEnv("MIXD", "4"))        #No. of mix tunnels
+  mountsMix* = existsEnv("MOUNTSMIX")                           #Full mix-net peer
+  usesMix* = existsEnv("USESMIX")                               #Supports sending mix messages
+  mixCount* = parseInt(getEnv("NUMMIX", "0"))                   #Number of mix peers (mountsMix + usesMix)
+  inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
+  httpPublishPort* = Port(8645)
+  prometheusPort* = Port(8008)
+  myPort* = Port(5000)
+  chunks* = parseInt(getEnv("FRAGMENTS", "1"))                  #No. of fragments for each message
+  mix_D* = parseInt(getEnv("MIXD", "4"))                        #No. of mix tunnels
 
 
 proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] =
