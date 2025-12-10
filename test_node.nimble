@@ -7,6 +7,7 @@ description   = "A test node for gossipsub"
 license       = "MIT"
 skipDirs      = @[]
 
-requires "nim >= 1.6.0",
+requires "nim >= 2.2.0",
+          "nimcrypto 0.6.4",
           "libp2p",
           "ggplotnim"
