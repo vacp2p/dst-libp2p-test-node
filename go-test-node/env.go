@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	inShadow = os.Getenv("SHADOWENV") != ""
+	inShadow = strings.EqualFold(os.Getenv("SHADOWENV"), "true")
 	chunks   = getEnvInt("FRAGMENTS", 1)
 	msgSeen  = make(map[uint64]int)
 	log      = logging.Logger("pubsub-test")
