@@ -1,5 +1,5 @@
 # Create the build image
-FROM nimlang/nim:2.2.0 as build
+FROM nimlang/nim:2.2.0 AS build
 
 WORKDIR /node
 COPY . .
@@ -9,8 +9,8 @@ RUN git config --global http.sslVerify false
 RUN nimble install -dy
 
 RUN nimble c \
-    -d:chronicles_colors=None --threads:on \
-    -d:metrics -d:libp2p_network_protocols_metrics -d:libp2p_quic_support -d:release \
+    -d:chronicles_colors=None --threads:on --mm:refc \
+    -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     --passL:"-static-libgcc -static-libstdc++" \
     main
 
