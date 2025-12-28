@@ -76,6 +76,7 @@ func publishNewMessage(topic *pubsub.Topic, msgSize int, ctx context.Context) (t
 			return now, err
 		}
 	}
+	RecordMessagePublished(topic.String())
 	return now, nil
 }
 
@@ -354,6 +355,8 @@ func main() {
 	var opts []libp2p.Option
 	opts = append(opts, libp2p.Identity(pk))
 	opts = append(opts, libp2p.ListenAddrs(address))
+	//disable libp2p metrics. we only get pubsub metrics
+	opts = append(opts, libp2p.DisableMetrics())
 
 	switch strings.ToLower(muxer) {
 	case "quic":
@@ -369,6 +372,7 @@ func main() {
 
 	// Create GossipSub
 	gsParams := configureGossipsubParams()
+	gsTracer := NewGossipSubTracer(gsParams.Dlo)
 	ps, err := pubsub.NewGossipSub(ctx, host,
 		pubsub.WithGossipSubParams(gsParams),
 		pubsub.WithMessageIdFn(msgIdProvider),
@@ -377,6 +381,7 @@ func main() {
 		//pubsub.WithMaxMessageSize(10*1<<20),
 		//pubsub.WithValidateQueueSize(600),
 		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
+		pubsub.WithRawTracer(gsTracer),
 	)
 	if err != nil {
 		panic(fmt.Errorf("error creating pubsub: %s", err))
@@ -398,6 +403,18 @@ func main() {
 	// Wait for node building
 	log.Infow("Waiting for node initialization...")
 	time.Sleep(5 * time.Second)
+
+	log.Infow("Starting metrics server")
+	topicNames := []string{"test"}
+	InitPubsubMetrics(topicNames)
+	if err := startMetricsServer(); err != nil {
+		log.Errorw("Failed to initialize metrics server", "error", err)
+	} else {
+		go StartHostMetricsUpdater(host, ps, topicNames, muxer)
+		if inShadow {
+			go storeMetrics(myId)
+		}
+	}
 
 	// Connect to peers
 	connectToPeers(ctx, host, myId, networkSize, connectTo, muxer, service)
