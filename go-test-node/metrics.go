@@ -541,7 +541,7 @@ func UpdateHostMetrics(h host.Host, ps *pubsub.PubSub, topics []string, muxer st
 }
 
 func StartHostMetricsUpdater(h host.Host, ps *pubsub.PubSub, topics []string, muxer string) {
-	ticker := time.NewTicker(15 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {

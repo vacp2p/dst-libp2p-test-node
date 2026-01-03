@@ -75,8 +75,8 @@ func publishNewMessage(topic *pubsub.Topic, msgSize int, ctx context.Context) (t
 		if err := topic.Publish(ctx, payload); err != nil {
 			return now, err
 		}
+		RecordMessagePublished(topic.String())
 	}
-	RecordMessagePublished(topic.String())
 	return now, nil
 }
 
