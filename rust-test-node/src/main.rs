@@ -1,5 +1,7 @@
 mod env;
+mod metrics;
 
+use metrics::GossipSubMetrics;
 use libp2p::{
     gossipsub::{self, ValidationMode},
     noise,
@@ -30,6 +32,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use env::{get_peer_details, PeerConfig, start_metrics_server, store_metrics};
+
+const GOSSIPSUB_D_LOW: i64 = 4;
+const GOSSIPSUB_D: i64 = 6;
+const GOSSIPSUB_D_HIGH: i64 = 8;
 
 // Fragment counter for message fragmentation
 lazy_static::lazy_static! {
@@ -70,7 +76,7 @@ fn msg_id_provider(message: &gossipsub::Message) -> gossipsub::MessageId {
     gossipsub::MessageId::from(hasher.finish().to_string())
 }
 
-async fn create_message_handler(message: gossipsub::Message, chunks: u32) {
+async fn create_message_handler(message: gossipsub::Message, chunks: u32, custom_metrics: &GossipSubMetrics) {
     let mut cursor = Cursor::new(&message.data[0..8]);
     if let Ok(tx_time) = cursor.read_i64::<LittleEndian>() {
         if tx_time >= 1000000 {
@@ -85,6 +91,7 @@ async fn create_message_handler(message: gossipsub::Message, chunks: u32) {
             let now = Utc::now();
             let unix_nano = now.timestamp() * 1_000_000_000 + now.nanosecond() as i64;
             println!("{} milliseconds: {}", tx_time, (unix_nano - tx_time) / 1_000_000);
+            custom_metrics.inc_received_message();
 
             message_chunks.remove(&tx_time);
         }
@@ -214,7 +221,6 @@ async fn start_http_server(
 }
 
 fn configure_gossipsub_params() -> gossipsub::Config {
-
     gossipsub::ConfigBuilder::default()
         .validation_mode(ValidationMode::Permissive)
         .message_id_fn(msg_id_provider)
@@ -222,9 +228,9 @@ fn configure_gossipsub_params() -> gossipsub::Config {
         .heartbeat_interval(Duration::from_secs(1))
         .prune_backoff(Duration::from_secs(60))
         .gossip_factor(0.25)
-        .mesh_n(6)
-        .mesh_n_low(4)
-        .mesh_n_high(8)
+        .mesh_n(GOSSIPSUB_D as usize)
+        .mesh_n_low(GOSSIPSUB_D_LOW as usize)
+        .mesh_n_high(GOSSIPSUB_D_HIGH as usize)
         .mesh_outbound_min(3)
         .gossip_lazy(6)
         .opportunistic_graft_peers(0)
@@ -238,7 +244,6 @@ fn subscribe_gossipsub_topic(
     swarm: &mut libp2p::Swarm<MyBehaviour>,
     topic_name: &str
 ) -> Result<gossipsub::IdentTopic, Box<dyn Error>> {
-
     let topic = gossipsub::IdentTopic::new(topic_name);
     swarm.behaviour_mut()
         .gossipsub
@@ -251,7 +256,6 @@ fn subscribe_gossipsub_topic(
         first_message_deliveries_decay: 0.9,
         ..Default::default()
     };
-    
 
     match swarm.behaviour_mut()
         .gossipsub
@@ -268,7 +272,6 @@ fn subscribe_gossipsub_topic(
 }
 
 async fn resolve_address(t_address: &str, in_shadow: bool, muxer: &str) -> Result<Vec<String>, Box<dyn Error>> {
-
     let mut addrs = Vec::new();
 
     loop {
@@ -299,9 +302,9 @@ async fn resolve_address(t_address: &str, in_shadow: bool, muxer: &str) -> Resul
 
 async fn connect_gossipsub_peers(
     swarm: &mut libp2p::Swarm<MyBehaviour>,
-    config: &PeerConfig
+    config: &PeerConfig,
+    custom_metrics: &GossipSubMetrics,
 ) -> Result<u32, Box<dyn Error>> {
-
     let mut rng = rng();
 
     let t_addresses: Vec<String> = if config.in_shadow {
@@ -357,7 +360,21 @@ async fn connect_gossipsub_peers(
             Duration::from_millis(100),
             swarm.next()
         ).await {
-            if let SwarmEvent::ConnectionEstablished { .. } = event {}
+            match event {
+                SwarmEvent::ConnectionEstablished { .. } => {}
+                SwarmEvent::Behaviour(MyBehaviourEvent::Gossipsub(gossipsub_event)) => {
+                    match gossipsub_event {
+                        gossipsub::Event::Subscribed { topic, .. } => {
+                            custom_metrics.inc_received_subscriptions(&topic.to_string());
+                        }
+                        gossipsub::Event::Unsubscribed { topic, .. } => {
+                            custom_metrics.inc_received_unsubscriptions(&topic.to_string());
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -396,6 +413,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let config = get_peer_details()?;
     let mut metric_registry = Registry::default();
+    let custom_metrics = Arc::new(GossipSubMetrics::new(&mut metric_registry, GOSSIPSUB_D_LOW));
 
     let mut swarm = if config.muxer == "quic" {
         //quic transport
@@ -422,7 +440,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     
     // Subscribe topic and start listening
-    let topic = subscribe_gossipsub_topic(&mut swarm, "test")?;    
+    let topic = subscribe_gossipsub_topic(&mut swarm, "test")?;
     swarm.listen_on(config.address.parse()?)?;
     
     // Start metrics server
@@ -437,7 +455,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
     // Wait for node initialization before connecting with peers
     sleep(Duration::from_secs(60)).await;
-    let connected = connect_gossipsub_peers(&mut swarm, &config).await?;
+    let connected = connect_gossipsub_peers(&mut swarm, &config, &custom_metrics).await?;
     
     let mesh_size = swarm.behaviour().gossipsub.mesh_peers(&topic.hash()).count();
     let peers_connected = swarm.behaviour().gossipsub.all_peers().count();
@@ -452,13 +470,52 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tokio::spawn(async move {
         start_http_server(publish_tx, config_http).await;
     });
+
+    // health metrics update interval
+    let mut health_interval = tokio::time::interval(Duration::from_secs(5));
     
     loop {
         tokio::select! {
-            Some(cmd) = publish_rx.recv() => {
-                // Handle publish command from HTTP
-                publish_new_message(cmd, &mut swarm).await;
+            // Update peer/topic counts and health
+            _ = health_interval.tick() => {
+                let peer_count = swarm.connected_peers().count() as i64;
+                custom_metrics.set_peers(peer_count);
+
+                let gossipsub = &swarm.behaviour().gossipsub;
+                let pubsub_peers = gossipsub.all_peers().count() as i64;
+                custom_metrics.set_pubsub_peers(pubsub_peers);
+
+                let mut mesh_counts: Vec<(String, i64)> = Vec::new();
+                for topic_hash in gossipsub.topics() {
+                    let topic_str = topic_hash.to_string();
+                    let mesh_peers = gossipsub
+                        .mesh_peers(&topic_hash)
+                        .count() as i64;
+                    let topic_peers = gossipsub
+                        .all_peers()
+                        .filter(|(_, topics)| topics.iter().any(|t| *t == topic_hash))
+                        .count() as i64;
+
+                    custom_metrics.set_mesh_peers(&topic_str, mesh_peers);
+                    custom_metrics.set_topic_peers(&topic_str, topic_peers);
+
+                    mesh_counts.push((topic_str, mesh_peers));
+                }
+
+                custom_metrics.set_pubsub_topics(mesh_counts.len() as i64);
+                custom_metrics.update_health(&mesh_counts);
             }
+
+            // Handle publish command from HTTP
+            Some(cmd) = publish_rx.recv() => {
+                let topic_name = cmd.topic.clone();
+                publish_new_message(cmd, &mut swarm).await;
+
+                // Count published messages. We don't consider fragments
+                custom_metrics.inc_messages_published(&topic_name);
+            }
+
+            // Handle swarm events
             event = swarm.select_next_some() => {
                 metrics.record(&event);
 
@@ -467,21 +524,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         metrics.record(gossipsub_event);
                         match gossipsub_event {
                             gossipsub::Event::Message { message, .. } => {
-                                create_message_handler(message.clone(), config.chunks).await;
+                                create_message_handler(message.clone(), config.chunks, &custom_metrics).await;
                             }
                             gossipsub::Event::Subscribed { peer_id, topic } => {
                                 info!("Peer {} subscribed to topic {:?}", peer_id, topic);
+                                custom_metrics.inc_received_subscriptions(&topic.to_string());
                             }
                             gossipsub::Event::Unsubscribed { peer_id, topic } => {
                                 info!("Peer {} unsubscribed from topic {:?}", peer_id, topic);
+                                custom_metrics.inc_received_unsubscriptions(&topic.to_string());
                             }
-                            _ => {
-                                
-                            }
+                            _ => {}
                         }
                     }
+
                     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                         info!("Connection established with {}", peer_id);
+                    }
+                    SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                        info!("Connection closed with {}", peer_id);
                     }
                     SwarmEvent::IncomingConnectionError { send_back_addr, error, .. } => {
                         warn!("Incoming connection error from {}: {}", send_back_addr, error);
