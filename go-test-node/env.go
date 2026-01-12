@@ -3,9 +3,12 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	gcrypto "github.com/ethereum/go-ethereum/crypto"
@@ -16,8 +19,8 @@ import (
 )
 
 const (
-	myPort = 5000
-	//prometheusPort  = 8008
+	myPort          = 5000
+	prometheusPort  = 8008
 	httpPublishPort = 8645
 )
 
@@ -110,4 +113,34 @@ func generateKey(hostname string) crypto.PrivKey {
 	privK, _ := btcec.PrivKeyFromBytes(p.D.Bytes())
 	key := (*crypto.Secp256k1PrivateKey)(privK)
 	return crypto.PrivKey(key)
+}
+
+func storeMetrics(myId int) {
+	time.Sleep(time.Duration(myId*60) * time.Millisecond)
+	url := fmt.Sprintf("http://localhost:%d/metrics", prometheusPort)
+	outputFile := fmt.Sprintf("metrics_pod-%d.txt", myId)
+	file, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Errorw("Failed to create metrics file", "peer", myId, "error", err)
+		return
+	}
+	defer file.Close()
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	for {
+		resp, err := client.Get(url)
+		if err != nil {
+			log.Warnw("Failed to log metrics", "peer", myId, "error", err)
+		} else {
+			if resp.StatusCode == http.StatusOK {
+				io.Copy(file, resp.Body)
+				log.Infow("Metrics saved for peer", "peer", myId)
+			} else {
+				log.Infow("Metrics received non-200 response", "peer", myId, "status", resp.Status)
+			}
+			resp.Body.Close()
+		}
+		time.Sleep(5 * time.Minute)
+	}
 }

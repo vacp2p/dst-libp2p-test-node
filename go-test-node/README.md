@@ -9,13 +9,14 @@ The [go-libp2p](https://github.com/libp2p/go-libp2p) based test node provides a 
 - Message fragmentation support
 - HTTP-based message injection for dynamic test configuration
 - Latency measurements for message propagation
+- Prometheus metrics collection
 - Kubernetes and shadow deployment
 
 ## Environment Variables
 
 - `PEERS` — Number of peers in the network (default: `100`)
 - `CONNECTTO` — Target number of peers to dial (default: `10`)
-- `MUXER` — Stream multiplexer (default: `yamux`)
+- `MUXER` — Stream multiplexer: supports QUIC and yamux (default: `yamux`)
 - `FRAGMENTS` — Number of message fragments (default: `1`)
 - `SHADOWENV` — Whether running in shadow simulator (default: `false`)
 - `SERVICE` — K8s service name for peer discovery (default: `nimp2p-service`) 
