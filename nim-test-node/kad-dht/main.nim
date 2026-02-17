@@ -1,6 +1,6 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
-import mix_helpers, env
+import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
@@ -83,7 +83,7 @@ proc main {.async.} =
   randomize()
   let
     rng = libp2p.newRng()
-    (myId, muxer, filePath, address) = getPeerDetails().valueOr:
+    (myId, muxer, address) = getPeerDetails().valueOr:
       error "Error reading peer settings ",  err = error
       return
 
@@ -124,20 +124,21 @@ proc main {.async.} =
   #    except CatchableError as exc:
   #      warn "Failed to connect to bootstrap", address = b, error = exc.msg
 #
-  ## 4. Role-based execution
-  #case nodeRole
-  #of RoleBootstrap:
-  #  # Just stay alive and serve queries
-  #  while true: await sleepAsync(1.hours)
-#
-  #of RoleNormal:
-  #  await runWarmup(kad, selfId)
-  #  # Keep node alive for steady state refresh
-  #  while true: await sleepAsync(1.hours)
-#
-  #of RoleProbe:
-  #  await runWarmup(kad, selfId) # Probes also need a routing table
-  #  await runProbe(kad)
+  # 4. Role-based execution
+  case nodeRole
+  of RoleBootstrap:
+    # Just stay alive and serve queries
+    while true: await sleepAsync(1.hours)
+
+  of RoleNormal:
+    #await runWarmup(kad, selfId)
+    # Keep node alive for steady state refresh
+    while true: await sleepAsync(1.hours)
+
+  of RoleProbe:
+    #await runWarmup(kad, selfId) # Probes also need a routing table
+    #await runProbe(kad)
+    while true: await sleepAsync(1.hours)
 
 waitFor(main())
 

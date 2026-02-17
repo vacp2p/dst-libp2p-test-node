@@ -7,14 +7,13 @@ let
   prometheusPort* = Port(8008)
   myPort* = Port(5001)
 
-proc getPeerDetails*(): Result[(int, string, string, string), string] =
+proc getPeerDetails*(): Result[(int, string, string), string] =
   let 
     # hostname = getHostname()
     # myId = parseInt(hostname.split('-')[^1])
     hostname = "test"
     myId = 0
     muxer = getEnv("MUXER", "yamux")
-    filePath = if inShadow: "../" else: getEnv("FILEPATH", "./")
     address = if muxer.toLowerAscii() == "quic":
       "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
     else:
@@ -23,9 +22,9 @@ proc getPeerDetails*(): Result[(int, string, string, string), string] =
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
     return err("Unknown muxer type : " & muxer)
   
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, mountsMix = mountsMix, usesMix = usesMix, mixCount = mixCount, inShadow = inShadow, address = address
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, address = address
 
-  return ok((myId, muxer, filePath, address))
+  return ok((myId, muxer, address))
 
 #Prometheus metrics
 proc startMetricsServer*(
