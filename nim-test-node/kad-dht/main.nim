@@ -4,7 +4,7 @@ import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
-import libp2p/protocols/[mix, mix/mix_protocol, kademlia]
+import libp2p/protocols/kademlia
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
@@ -17,31 +17,31 @@ type
 
 # --- Helpers ---
 
-# proc getRandomPeerId(): PeerId =
-#   # Generates a random peer ID for FIND_NODE targets
-#   let rng = newRng()
-#   return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
+proc getRandomPeerId(): PeerId =
+  # Generates a random peer ID for FIND_NODE targets
+  let rng = newRng()
+  return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
 
 # --- Core Logic ---
 
-#proc runWarmup(kad: KadDHT, selfId: PeerId) {.async.} =
-#  notice "Starting warmup phase", role = nodeRole
-#
-#  # 5x FIND_NODE(self)
-#  for i in 1..5:
-#    trace "Warmup: Finding self", iteration = i
-#    discard await kad.findNode(selfId)
-#    await sleepAsync(1.seconds)
-#
-#  # 15x FIND_NODE(random)
-#  for i in 1..15:
-#    let target = getRandomPeerId()
-#    trace "Warmup: Finding random node", iteration = i, target = target
-#    discard await kad.findNode(target)
-#    # Optional: Dial a few returned peers to populate routing table
-#    await sleepAsync(2.seconds)
-#
-#  notice "Warmup complete"
+proc runWarmup(kad: KadDHT, selfId: PeerId) {.async.} =
+  notice "Starting warmup phase"
+
+  # 5x FIND_NODE(self)
+  for i in 1..5:
+    notice "Warmup: Finding self", iteration = i
+    discard await kad.findNode(selfId.toKey())
+    await sleepAsync(1.seconds)
+
+  # 15x FIND_NODE(random)
+  for i in 1..15:
+    let target = getRandomPeerId()
+    notice "Warmup: Finding random node", iteration = i, target = target
+    discard await kad.findNode(target.toKey())
+    # Optional: Dial a few returned peers to populate routing table
+    await sleepAsync(2.seconds)
+
+  notice "Warmup complete"
 
 # proc runProbe(kad: KadDHT) {.async.} =
 #   notice "Starting probe loop"
@@ -131,7 +131,7 @@ proc main {.async.} =
     while true: await sleepAsync(1.hours)
 
   of RoleNormal:
-    #await runWarmup(kad, selfId)
+    await runWarmup(kad, selfId)
     # Keep node alive for steady state refresh
     while true: await sleepAsync(1.hours)
 
