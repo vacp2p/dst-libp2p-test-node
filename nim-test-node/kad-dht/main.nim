@@ -164,34 +164,21 @@ proc main {.async.} =
 
   let selfId = switch.peerInfo.peerId
   notice "Node started", peerId = selfId, role = nodeRole, listen = address
-#
-  ## 3. Connect to Bootstraps (Staggered)
-  #if nodeRole != RoleBootstrap:
-  #  # Randomized sleep
-  #  let delay = rand(100..150)
-  #  debug "Staggered join", delay_ms = delay
-  #  await sleepAsync(delay.milliseconds)
-#
-  #  for b in bootstrapAddrs:
-  #    try:
-  #      let ma = MultiAddress.init(b).get()
-  #      await switch.connect(ma)
-  #      notice "Connected to bootstrap", address = b
-  #    except CatchableError as exc:
-  #      warn "Failed to connect to bootstrap", address = b, error = exc.msg
-#
-  # 4. Role-based execution
+
+  # 3. Role-based execution
   case nodeRole
   of RoleBootstrap:
     # Just stay alive and serve queries
     while true: await sleepAsync(1.hours)
 
   of RoleNormal:
+    await connectToBootstraps(switch, muxer, service)
     await runWarmup(kad, selfId)
     # Keep node alive for steady state refresh
     while true: await sleepAsync(1.hours)
 
   of RoleProbe:
+    await connectToBootstraps(switch, muxer, service)
     #await runWarmup(kad, selfId) # Probes also need a routing table
     #await runProbe(kad)
     while true: await sleepAsync(1.hours)
