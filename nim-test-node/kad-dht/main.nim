@@ -37,6 +37,12 @@ proc runWarmup(kad: KadDHT, selfId: PeerId) {.async.} =
   for i in 1..5:
     notice "Warmup: Finding self", iteration = i
     let peers = await kad.findNode(selfId.toKey())
+    var rtPeers = 0
+    for b in kad.rtable.buckets:
+      rtPeers += b.peers.len
+
+    info "Kad routing table", peers = rtPeers, buckets = kad.rtable.buckets.len
+
     logFindNodeResult("warmup-self", selfId, peers)
 
     await sleepAsync(1.seconds)
