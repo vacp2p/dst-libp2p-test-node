@@ -1,11 +1,11 @@
-import strutils, os, osproc
+import strutils, os
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
 let
   httpPublishPort* = Port(8645)
   prometheusPort* = Port(8008)
-  myPort* = Port(5001)
+  myPort* = Port(parseInt(getEnv("PORT", "5000")))
 
 proc getPeerDetails*(): Result[(int, string, string), string] =
   let 
