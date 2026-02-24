@@ -160,9 +160,21 @@ proc main {.async.} =
     .build()
 
   # 2. Initialize DHT
+  let isBootstrap = getEnv("NODE_ROLE") == "RoleBootstrap"
+
+  var bootstrapNodes: seq[(PeerId, seq[MultiAddress])] = @[]
+  if not isBootstrap:
+    let bootstrapPeerIdStr = getEnv("BOOTSTRAP_PEER_ID", "")
+    let bootstrapAddrStr = getEnv("BOOTSTRAP_ADDR", "")
+
+    let otherPeerId = PeerId.init(bootstrapPeerIdStr).tryGet()
+    let otherAddr = MultiAddress.init(bootstrapAddrStr).tryGet()
+
+    bootstrapNodes = @[(otherPeerId, @[otherAddr])]
+
   let kad = KadDHT.new(
     switch,
-    # bootstrapNodes = @[(otherPeerId, @[MultiAddress.init(otherAddr).get()])],
+    bootstrapNodes = bootstrapNodes,
     config = KadDHTConfig.new(),
   )
   switch.mount(kad)
