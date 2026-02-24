@@ -76,8 +76,7 @@ proc main {.async.} =
 
   let
     nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
-    myPort = parseInt(getEnv("PORT", "5000"))
-    bootstrapAddrs = getEnv("BOOTSTRAPS", "").split(",").filterIt(it.len > 0)
+    service = getEnv("SERVICE", "kad-service:5000")
     isServer = nodeRole in {RoleBootstrap, RoleNormal}
 
   randomize()
