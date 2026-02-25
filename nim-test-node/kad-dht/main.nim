@@ -50,9 +50,11 @@ proc runWarmup(kad: KadDHT, selfId: PeerId) {.async.} =
   # 15x FIND_NODE(random)
   for i in 1..15:
     let target = getRandomPeerId()
-    notice "Warmup: Finding random node", iteration = i, target = target
-    discard await kad.findNode(target.toKey())
-    # Optional: Dial a few returned peers to populate routing table
+    debug "Warmup: Finding random node", iteration = i, target = target
+
+    let peers = await kad.findNode(target.toKey())
+    logFindNodeResult("warmup-random", target, peers)
+
     await sleepAsync(2.seconds)
 
   notice "Warmup complete"
