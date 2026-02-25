@@ -204,18 +204,3 @@ proc main {.async.} =
 waitFor(main())
 
 
-# KadDHTConfig(
-#   validator: validator,
-#   selector: selector,
-#   timeout: timeout,
-#   bucketRefreshTime: bucketRefreshTime,
-#   retries: retries,
-#   replication: replication,
-#   alpha: alpha,
-#   quorum: quorum,
-#   providerRecordCapacity: providerRecordCapacity,
-#   providedKeyCapacity: providedKeyCapacity,
-#   republishProvidedKeysInterval: republishProvidedKeysInterval,
-#   cleanupProvidersInterval: cleanupProvidersInterval,
-#   providerExpirationInterval: providerExpirationInterval,
-# )
