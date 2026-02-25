@@ -107,34 +107,34 @@ proc connectToBootstraps(switch: Switch, muxer: string, service: string) {.async
       warn "Failed to connect to bootstrap", address = addr, error = exc.msg
 
 
-# proc runProbe(kad: KadDHT) {.async.} =
-#   notice "Starting probe loop"
-#   while true:
-#     let
-#       target = getRandomPeerId()
-#       start = getTime()
-#
-#     try:
-#       # findNode returns seq[PeerInfo]
-#       let peers = await kad.findNode(target).wait(30.seconds)
-#       let duration = (getTime() - start).inMilliseconds()
-#
-#       notice "Probe Result",
-#         target = $target,
-#         success = true,
-#         duration_ms = duration,
-#         peers_found = peers.len,
-#         closer_peers = peers.mapIt($it.peerId)
-#
-#     except CatchableError as exc:
-#       let duration = (getTime() - start).inMilliseconds()
-#       warn "Probe Failed",
-#         target = $target,
-#         success = false,
-#         duration_ms = duration,
-#         error = exc.msg
-#
-#     await sleepAsync(10.seconds) # Sample every 10s
+proc runProbe(kad: KadDHT) {.async.} =
+  notice "Starting probe loop"
+  while true:
+    let
+      targetPeer = getRandomPeerId()
+      targetKey = targetPeer.toKey()
+      start = getTime()
+
+    try:
+      let peers = await kad.findNode(targetKey).wait(30.seconds)
+      let duration = (getTime() - start).inMilliseconds()
+      notice "Probe Result",
+        target = $targetPeer,
+        success = true,
+        duration_ms = duration,
+        peers_found = peers.len,
+        closer_peers = peers.mapIt($it)
+
+    except CatchableError as exc:
+      let duration = (getTime() - start).inMilliseconds()
+      warn "Probe Failed",
+        target = $targetPeer,
+        success = false,
+        duration_ms = duration,
+        error = exc.msg
+
+    await sleepAsync(10.seconds)
+
 
 proc main {.async.} =
 
