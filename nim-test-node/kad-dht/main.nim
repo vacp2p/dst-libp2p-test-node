@@ -198,8 +198,7 @@ proc main {.async.} =
 
   of RoleProbe:
     await connectToBootstraps(switch, muxer, service)
-    #await runWarmup(kad, selfId) # Probes also need a routing table
-    #await runProbe(kad)
+    await runProbe(kad)
     while true: await sleepAsync(1.hours)
 
 waitFor(main())
