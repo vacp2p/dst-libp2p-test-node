@@ -23,10 +23,9 @@ proc getRandomPeerId(): PeerId =
   return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
 
 proc logFindNodeResult(tag: string, target: PeerId, peers: seq[PeerId]) =
-  info "findNode result", tag = tag, target = $target, count = peers.len
+  debug "findNode result", tag = tag, target = $target, count = peers.len
   for i, p in peers:
-    info "findNode peer", tag = tag, i = i, peer = $p
-
+    debug "findNode peer", tag = tag, i = i, peer = $p
 
 # --- Core Logic ---
 
@@ -35,13 +34,13 @@ proc runWarmup(kad: KadDHT, selfId: PeerId) {.async.} =
 
   # 5x FIND_NODE(self)
   for i in 1..5:
-    notice "Warmup: Finding self", iteration = i
+    debug "Warmup: Finding self", iteration = i
     let peers = await kad.findNode(selfId.toKey())
     var rtPeers = 0
     for b in kad.rtable.buckets:
       rtPeers += b.peers.len
 
-    info "Kad routing table", peers = rtPeers, buckets = kad.rtable.buckets.len
+    debug "Kad routing table", peers = rtPeers, buckets = kad.rtable.buckets.len
 
     logFindNodeResult("warmup-self", selfId, peers)
 
