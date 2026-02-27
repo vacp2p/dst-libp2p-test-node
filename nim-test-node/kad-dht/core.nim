@@ -38,21 +38,6 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
 
   notice "Warmup complete"
 
-proc connectToBootstraps*(switch: Switch, muxer: string, service: string) {.async.} =
-  let addrsRes = await resolveService(muxer, service)
-  let addrs = addrsRes.valueOr:
-    error "Failed to resolve bootstrap service", service = service, error = error
-    return
-
-  for addr in addrs:
-    try:
-      discard await switch.connect(addr, allowUnknownPeerId=true)
-      notice "Connected to bootstrap", address = addr
-      await sleepAsync(2.seconds)
-    except CatchableError as exc:
-      warn "Failed to connect to bootstrap", address = addr, error = exc.msg
-
-
 proc runProbe*(kad: KadDHT) {.async.} =
   notice "Starting probe loop"
   while true:
