@@ -24,8 +24,6 @@ proc main {.async.} =
       return
 
   var switch = buildSwitch(address)
-  var kad = mountDiscovery(switch, discovery)
-
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
@@ -34,17 +32,28 @@ proc main {.async.} =
   # Role-based execution
   case nodeType
   of RoleBootstrap:
+    var kad = await mountDiscovery(switch, discovery, @[])
     # Just stay alive and serve queries
     while true: await sleepAsync(1.hours)
 
   of RoleNormal:
-    await connectToBootstraps(switch, muxer, service)
+    var bootAddressesRes = await connectToBootstraps(switch, muxer, service)
+    let bootAddresses = bootAddressesRes.valueOr:
+      error "Failed to discover bootstrap nodes", service = service, err = error
+      quit(1)
+
+    var kad = await mountDiscovery(switch, discovery, bootAddresses)
     await runWarmup(kad, selfId)
     # Keep node alive for steady state refresh
     while true: await sleepAsync(1.hours)
 
   of RoleProbe:
-    await connectToBootstraps(switch, muxer, service)
+    var bootAddressesRes = await connectToBootstraps(switch, muxer, service)
+    let bootAddresses = bootAddressesRes.valueOr:
+      error "Failed to discover bootstrap nodes", service = service, err = error
+      quit(1)
+
+    var kad = await mountDiscovery(switch, discovery, bootAddresses)
     await runProbe(kad)
     while true: await sleepAsync(1.hours)
 
