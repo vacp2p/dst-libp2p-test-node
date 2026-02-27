@@ -24,7 +24,7 @@ proc getPeerDetails*(): Result[(int, string, string, NodeType, string), string] 
       "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
     else:
       "/ip4/0.0.0.0/tcp/" & $myPort
-    nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
+    nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleBootstrap"))
     discovery = getEnv("DISCOVERY", "kad-dht")
 
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
