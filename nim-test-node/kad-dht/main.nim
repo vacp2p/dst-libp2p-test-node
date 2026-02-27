@@ -4,47 +4,13 @@ import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
-import libp2p/protocols/kademlia
+import libp2p/protocols/[kademlia, kad_disco]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
-# --- Configuration & Types ---
-
-type
-  NodeType = enum
-    RoleBootstrap, RoleNormal, RoleProbe
-
-# --- Helpers ---
-
-proc getRandomPeerId(): PeerId =
-  # Generates a random peer ID for FIND_NODE targets
-  let rng = newRng()
-  return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
-
-proc logFindNodeResult(tag: string, target: PeerId, peers: seq[PeerId]) =
-  debug "findNode result", tag = tag, target = $target, count = peers.len
-  for i, p in peers:
-    debug "findNode peer", tag = tag, i = i, peer = $p
-
-# --- Core Logic ---
-
-proc runWarmup(kad: KadDHT, selfId: PeerId) {.async.} =
-  notice "Starting warmup phase"
-
-  # 5x FIND_NODE(self)
-  for i in 1..5:
-    debug "Warmup: Finding self", iteration = i
-    let peers = await kad.findNode(selfId.toKey())
-    var rtPeers = 0
-    for b in kad.rtable.buckets:
-      rtPeers += b.peers.len
-
-    debug "Kad routing table", peers = rtPeers, buckets = kad.rtable.buckets.len
-
-    logFindNodeResult("warmup-self", selfId, peers)
-
-    await sleepAsync(1.seconds)
+import helpers
+import core
 
   # 15x FIND_NODE(random)
   for i in 1..15:
@@ -137,55 +103,26 @@ proc runProbe(kad: KadDHT) {.async.} =
 
 
 proc main {.async.} =
-
-  let
-    nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
-    service = getEnv("SERVICE", "kad-service:5000")
-    isServer = nodeRole in {RoleBootstrap, RoleNormal}
-
   randomize()
+
+  var service = getEnv("SERVICE", "kad-service:5000")
+
   let
     rng = libp2p.newRng()
-    (myId, muxer, address) = getPeerDetails().valueOr:
+    (myId, muxer, address, nodeType, discovery) = getPeerDetails().valueOr:
       error "Error reading peer settings ",  err = error
       return
 
-  # 1. Setup Networking
-  var switch = SwitchBuilder
-    .new()
-    .withNoise()
-    .withRng(crypto.newRng())
-    .withAddresses(@[MultiAddress.init(address).tryGet()])
-    .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-    .withYamux()
-    .build()
+  var switch = buildSwitch(address)
+  var kad = mountDiscovery(switch, discovery)
 
-  # 2. Initialize DHT
-  let isBootstrap = getEnv("NODE_ROLE") == "RoleBootstrap"
-
-  var bootstrapNodes: seq[(PeerId, seq[MultiAddress])] = @[]
-  if not isBootstrap:
-    let bootstrapPeerIdStr = getEnv("BOOTSTRAP_PEER_ID", "")
-    let bootstrapAddrStr = getEnv("BOOTSTRAP_ADDR", "")
-
-    let otherPeerId = PeerId.init(bootstrapPeerIdStr).tryGet()
-    let otherAddr = MultiAddress.init(bootstrapAddrStr).tryGet()
-
-    bootstrapNodes = @[(otherPeerId, @[otherAddr])]
-
-  let kad = KadDHT.new(
-    switch,
-    bootstrapNodes = bootstrapNodes,
-    config = KadDHTConfig.new(),
-  )
-  switch.mount(kad)
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
-  notice "Node started", peerId = $selfId, role = nodeRole, listen = address
+  notice "Node started", peerId = $selfId, role = nodeType, listen = address
 
-  # 3. Role-based execution
-  case nodeRole
+  # Role-based execution
+  case nodeType
   of RoleBootstrap:
     # Just stay alive and serve queries
     while true: await sleepAsync(1.hours)
@@ -202,5 +139,3 @@ proc main {.async.} =
     while true: await sleepAsync(1.hours)
 
 waitFor(main())
-
-
