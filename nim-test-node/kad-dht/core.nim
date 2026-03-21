@@ -22,8 +22,6 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
 
     debug "Kad routing table", peers = rtPeers, buckets = kad.rtable.buckets.len
 
-    logFindNodeResult("warmup-self", selfId, peers)
-
     await sleepAsync(1.seconds)
 
   # 15x FIND_NODE(random)
@@ -32,7 +30,6 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
     debug "Warmup: Finding random node", iteration = i, target = target
 
     let peers = await kad.findNode(target.toKey())
-    logFindNodeResult("warmup-random", target, peers)
 
     await sleepAsync(2.seconds)
 
