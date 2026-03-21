@@ -12,11 +12,6 @@ proc getRandomPeerId*(): PeerId =
   let rng = newRng()
   return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
 
-proc logFindNodeResult*(tag: string, target: PeerId, peers: seq[PeerId]) =
-  debug "findNode result", tag = tag, target = $target, count = peers.len
-  for i, p in peers:
-    debug "findNode peer", tag = tag, i = i, peer = $p
-
 proc buildSwitch*(address: string): Switch =
   SwitchBuilder
     .new()
@@ -66,7 +61,7 @@ proc connectToBootstraps*(switch: Switch, muxer: string, service: string
   for addr in addrs:
     try:
       let remotePeerId: PeerId = await switch.connect(addr, allowUnknownPeerId = true)
-      notice "Connected to bootstrap", address = addr, peerId = $remotePeerId
+      notice "Connected to bootstrap", address = addr, peerId = remotePeerId
       bootstraps.add((remotePeerId, @[addr]))
     except CatchableError as exc:
       lastErr = exc.msg

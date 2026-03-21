@@ -44,25 +44,14 @@ proc runProbe*(kad: KadDHT) {.async.} =
     let
       targetPeer = getRandomPeerId()
       targetKey = targetPeer.toKey()
-      start = getTime()
 
     try:
       let peers = await kad.findNode(targetKey).wait(30.seconds)
-      logFindNodeResult("runProbe", targetPeer, peers)
-      let duration = (getTime() - start).inMilliseconds()
-      notice "Probe Result",
-        target = $targetPeer,
-        success = true,
-        duration_ms = duration,
-        peers_found = peers.len,
-        closer_peers = peers.mapIt($it)
 
     except CatchableError as exc:
-      let duration = (getTime() - start).inMilliseconds()
       warn "Probe Failed",
         target = $targetPeer,
         success = false,
-        duration_ms = duration,
         error = exc.msg
 
-    await sleepAsync(10.seconds)
+    await sleepAsync(60.seconds)

@@ -27,7 +27,7 @@ proc main {.async.} =
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
-  notice "Node started", peerId = $selfId, role = nodeType, listen = address
+  notice "Node started", peerId = selfId, role = nodeType, listen = address
 
   # Role-based execution
   case nodeType
