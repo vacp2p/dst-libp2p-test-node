@@ -33,6 +33,7 @@ proc main {.async.} =
   case nodeType
   of RoleBootstrap:
     var kad = await mountDiscovery(switch, discovery, @[])
+    discard await startHealthServer(Port(8645))
     # Just stay alive and serve queries
     while true: await sleepAsync(1.hours)
 
@@ -44,6 +45,7 @@ proc main {.async.} =
 
     var kad = await mountDiscovery(switch, discovery, bootAddresses)
     await runWarmup(kad, selfId)
+    discard await startHealthServer(Port(8645))
     # Keep node alive for steady state refresh
     while true: await sleepAsync(1.hours)
 
