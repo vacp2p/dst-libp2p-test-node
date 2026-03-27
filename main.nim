@@ -39,7 +39,7 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   let
     now = getTime()
     nowInt = seconds(now.toUnix()) + nanoseconds(times.nanosecond(now))
-  var 
+  var
     res = 0
     #create payload with timestamp, so the receiver can discover elapsed time
     nowBytes = @(toBytesLE(uint64(nowInt.nanoseconds))) & newSeq[byte](msgSize div chunks)
@@ -48,7 +48,7 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   for chunk in 0..<chunks:
     nowBytes[10] = byte(chunk)
     res = if mountsMix:
-      await gossipSub.publish(topic, nowBytes, 
+      await gossipSub.publish(topic, nowBytes,
         publishParams = some(PublishParams(skipMCache: true, useCustomConn: true)),
       )
     else:
@@ -61,7 +61,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   proc processRequests(request: RequestFence): Future[HttpResponseRef] {.async.} =
     if request.isErr():
       return defaultResponse()
-      
+
     let req = request.get()
     try:
       case req.meth
@@ -76,7 +76,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
 
           info "controller message ", command = req.uri.path, topic = topic, size = msgSize, version = version
           let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, topic)
-          
+
           if publishResult > 0:
             let responseJson = """{"status":"success","message":"Message published at time """ & $publishTime & "}"
             return await req.respond(Http200, responseJson, HttpTable.init([("Content-Type", "application/json")]))
@@ -84,10 +84,10 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
             let responseJson = """{"status":"error","message":"Failed to publist at time """ & $publishTime & "}"
             return await req.respond(Http500, responseJson, HttpTable.init([("Content-Type", "application/json")]))
         else:
-          return await req.respond(Http404, "Not Found")          
+          return await req.respond(Http404, "Not Found")
       else:
         return await req.respond(Http405, "Method Not Supported")
-        
+
     except CatchableError as e:
       info "Error handling http request: ", error = e.msg
       let responseJson = """{"status":"error","message":"""" & e.msg.replace("\"", "\\\"") & """"}"""
@@ -100,7 +100,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
 
   if serverRes.isErr():
     raise newException(CatchableError, "Failed to create HTTP server: " & $serverRes.error)
-    
+
   let server = serverRes.get()
   server.start()
   info "http server started ", httpPort = $httpPublishPort
@@ -148,7 +148,7 @@ proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
   gossipSub.addValidator([topic], messageValidator)
 
 
-proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAddress], string]] {.async.} = 
+proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAddress], string]] {.async.} =
   while true:
     try:
       let resolvedAddrs =
@@ -172,7 +172,7 @@ proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAdd
 proc connectGossipsubPeers(
   switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: ref HmacDrbgContext
 ): Future[Result[int, string]] {.async.} =
-  var 
+  var
     addrs: seq[MultiAddress] = @[]
     tAddresses: seq[string]
     connected = 0
@@ -216,7 +216,7 @@ proc connectGossipsubPeers(
 proc main {.async.} =
   randomize()
   let
-    rng = libp2p.newRng() 
+    rng = libp2p.newRng()
     (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
       error "Error reading peer settings ",  err = error
       return
@@ -261,13 +261,8 @@ proc main {.async.} =
     await sleepAsync(10.seconds)
 
   if mountsMix:
-    let mixProto = MixProtocol.new(myId, mixCount, switch, filePath).valueOr:
-      error "Could not instantiate mix", err = error
-      return
-
-    mixProto.registerDestReadBehavior("/meshsub/1.2.0", readLp(1000))
-    gossipSub = initializeGossipsub(switch, true, some(mixProto))
-    switch.mount(mixProto)
+    error "Mix not implemented"
+    return
   else:
     gossipSub = initializeGossipsub(switch, true)
 
@@ -292,11 +287,11 @@ proc main {.async.} =
 
   #connect with peers
   discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
-    error "Failed to establish any connections", error = error 
+    error "Failed to establish any connections", error = error
     return
 
   await sleepAsync(5.seconds)
-  info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len, 
+  info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,
     peersConnected = gossipSub.gossipsub.getOrDefault("test").len
 
   info "Starting listening endpoint for publish controller"
