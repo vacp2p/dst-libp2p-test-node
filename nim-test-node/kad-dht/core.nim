@@ -51,4 +51,4 @@ proc runProbe*(kad: KadDHT) {.async.} =
         success = false,
         error = exc.msg
 
-    await sleepAsync(60.seconds)
+    await sleepAsync(5.seconds)
