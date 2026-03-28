@@ -1,5 +1,18 @@
 # Create the build image
-FROM nimlang/nim:2.2.0 AS build
+FROM debian:bookworm-slim AS build
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    build-essential \
+    xz-utils \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+ENV PATH="/root/.nimble/bin:${PATH}"
 
 WORKDIR /node
 COPY . .
