@@ -1,11 +1,14 @@
+import libp2p
 import stew/endians2, stew/byteutils, tables, strutils, os, osproc, chronos
-#import libp2p, libp2p/protocols/pubsub/rpc/messages
-#import libp2p/muxers/mplex/lpchannel, libp2p/protocols/ping
-import "../../nim-libp2p/libp2p", "../../nim-libp2p/libp2p/protocols/pubsub/rpc/messages"
-import "../../nim-libp2p/libp2p/muxers/mplex/lpchannel", "../../nim-libp2p/libp2p/protocols/ping"
+import libp2p/protocols/pubsub/rpc/messages
+import libp2p/muxers/mplex/lpchannel
+import libp2p/protocols/ping
+
+
 import sequtils, hashes, math, metrics, metrics/chronos_httpserver, httpclient
 from times import getTime, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from nativesockets import getHostname
+
 
 let
   inShadow = existsEnv("SHADOWENV")
@@ -37,7 +40,7 @@ proc startMetricsServer(
 proc main {.async.} =
   let
     hostname = getHostname()
-    myId = if inShadow: 
+    myId = if inShadow:
       parseInt(hostname[4..^1])
     else:
       parseInt(hostname.split('.')[0].split('-')[1])
@@ -50,7 +53,7 @@ proc main {.async.} =
     connectTo = parseInt(getEnv("CONNECTTO", "10"))
     senderRotation = getEnv("ROTATEPUBLISHER", "0") != "0"
 
-    isPublisher = if senderRotation: 
+    isPublisher = if senderRotation:
       myId in publisherId..(publisherId + messageCount)
     else:
       myId == publisherId
@@ -156,21 +159,21 @@ proc main {.async.} =
     except:
       echo "Failed to ping"
 
-  var 
+  var
     connected = 0
     peersInfo = toSeq(1..networkSize).filterIt(it != myId)
   rng.shuffle(peersInfo)
 
   for peerInfo in peersInfo:
     if connected > connectTo: break
-    
+
     let tAddress = if inShadow:
         "peer" & $peerInfo & ":" & $myPort                            # Shadow format
     else:
         "pod-" & $(peerInfo-1) & ".nimp2p-service:" & $myPort         # k8s format
 
     echo "Trying to resolve ", tAddress
-    
+
     try:
       let addrs = resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
       echo tAddress, " resolved: ", addrs, " - dialing!"
@@ -198,7 +201,7 @@ proc main {.async.} =
       for chunk in 0..<chunks:
         nowBytes[10] = byte(chunk)
         doAssert((await gossipSub.publish("test", nowBytes)) > 0)
-    
+
     if senderRotation:
       senderId = (senderId + 1) mod (networkSize + offset)
       if inShadow and senderId == 0:
@@ -208,16 +211,16 @@ proc main {.async.} =
   if metricsServer.isOk() and inShadow:
     echo "Fetching metrics"
     await sleepAsync((myId*60).milliseconds)
-    let cmd = "curl -s --connect-timeout 5 --max-time 5 -o metrics_peer" & 
+    let cmd = "curl -s --connect-timeout 5 --max-time 5 -o metrics_peer" &
             $myId & ".txt http://localhost:" & $prometheusPort & "/metrics"
-    
+
     let exitCode = execCmd(cmd)
     if exitCode == 0:
       echo "Metrics saved for peer ", myId
     else:
       echo "Failed to fetch metrics for peer ", myId, ": curl exit code ", exitCode
     await sleepAsync(6.seconds)
-    
+
   quit(0)
 
 waitFor(main())
