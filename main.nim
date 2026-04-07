@@ -53,6 +53,7 @@ proc main {.async.} =
     connectTo = parseInt(getEnv("CONNECTTO", "10"))
     senderRotation = getEnv("ROTATEPUBLISHER", "0") != "0"
 
+
     isPublisher = if senderRotation:
       myId in publisherId..(publisherId + messageCount)
     else:
