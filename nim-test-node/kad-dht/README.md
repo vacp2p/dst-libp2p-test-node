@@ -8,6 +8,9 @@ If you want to test with a local nim-libp2p version with local changes, it can b
 
 `-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:NOTICE --path:/your/path/nim-libp2p`
 
+Necessary logged information comes from the branch: https://github.com/vacp2p/nim-libp2p/tree/dst/improve_kad_logging.
+This commit is already set in .nimble file.
+
 ## How to run
 
 It expects the following ENV variables:
