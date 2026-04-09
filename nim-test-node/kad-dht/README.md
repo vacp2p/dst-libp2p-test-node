@@ -16,7 +16,7 @@ This commit is already set in .nimble file.
 It expects the following ENV variables:
 
 - PORT: Default `5000`
-- MUXER: Default `yamux`.
+- MUXER: Default `yamux`. Options [`yamux`, `mplex`, `quic`]
 - DISCOVERY: Default `kad-dht`. Options [`kad-dht`, `extended`]
 - NODE_ROLE: Default `RoleBootstrap`. Options [`RoleBootstrap`, `RoleNormal`, `RoleProbe`]
 

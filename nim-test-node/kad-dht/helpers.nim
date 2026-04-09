@@ -12,15 +12,25 @@ proc getRandomPeerId*(): PeerId =
   let rng = newRng()
   return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
 
-proc buildSwitch*(address: string): Switch =
-  SwitchBuilder
-    .new()
-    .withNoise()
-    .withRng(crypto.newRng())
-    .withAddresses(@[MultiAddress.init(address).tryGet()])
-    .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-    .withYamux()
-    .build()
+proc buildSwitch*(muxer: string, address: string): Switch =
+  var builder = SwitchBuilder
+      .new()
+      .withNoise()
+      .withRng(crypto.newRng())
+      .withAddresses(@[MultiAddress.init(address).tryGet()])
+      .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+
+  case muxer.toLowerAscii()
+  of "quic":
+    builder = builder.withQuicTransport()
+  of "yamux":
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+              .withYamux()
+  of "mplex":
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+              .withMplex()
+
+  builder.build()
 
 proc mountDiscovery*(switch: Switch, discovery: string, addresses: seq[(PeerId, seq[MultiAddress])]
   ): Future[KadDHT] {.async.}  =

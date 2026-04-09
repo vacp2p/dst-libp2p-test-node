@@ -23,7 +23,7 @@ proc main {.async.} =
       error "Error reading peer settings ",  err = error
       return
 
-  var switch = buildSwitch(address)
+  var switch = buildSwitch(muxer, address)
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
