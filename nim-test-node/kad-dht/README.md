@@ -1,9 +1,19 @@
+## Compile
+
+Can be compiled locally with:
+`-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:NOTICE`
+
+Useful debug levels: `NOTICE`, `INFO`, `DEBUG`
+If you want to test with a local nim-libp2p version with local changes, it can be done with:
+
+`-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:NOTICE --path:/your/path/nim-libp2p`
+
 ## How to run
 
 It expects the following ENV variables:
 
 - PORT: Default `5000`
-- MUXER: Default `yamux`. Options [`mplex`, `yamux`, `quic`]
+- MUXER: Default `yamux`.
 - DISCOVERY: Default `kad-dht`. Options [`kad-dht`, `extended`]
 - NODE_ROLE: Default `RoleBootstrap`. Options [`RoleBootstrap`, `RoleNormal`, `RoleProbe`]
 
