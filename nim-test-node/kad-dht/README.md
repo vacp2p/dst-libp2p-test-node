@@ -11,6 +11,17 @@ If you want to test with a local nim-libp2p version with local changes, it can b
 Necessary logged information comes from the branch: https://github.com/vacp2p/nim-libp2p/tree/dst/improve_kad_logging.
 This commit is already set in .nimble file.
 
+If you want to build with Docker, you can do it with:
+```
+docker buildx build \
+  --platform linux/amd64 \
+  -t docker.io/<your_registry>/<your_image_tag> \
+  --push \
+  .
+```
+
+
+
 ## How to run
 
 It expects the following ENV variables:
