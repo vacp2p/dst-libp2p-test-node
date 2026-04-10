@@ -1,3 +1,4 @@
+# Create the build image
 FROM debian:bookworm-slim AS build
 
 RUN apt-get update && \
