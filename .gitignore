@@ -1,8 +1,8 @@
-nimbledeps/*
 *.exe
-main
-stew/*
-nim-stew-master/*
+nim-test-node/nimbledeps/*
+nim-test-node/main
+nim-test-node/stew/*
+nim-test-node/nim-stew-master/*
 shadow/*.exe
 shadow/shadow*
 shadow/latencies*

@@ -3,7 +3,7 @@ This directory contains necessary files for running the dst-libp2p-test-nod usin
 * Creating a `shadow.yaml` file for describing the network topology.
 * Running the shadow simulation with configurable parameters.
 * Listing latency and bandwidth utilization.
-* Collecting Prometheus metrics from simulated nodes 
+* Collecting Prometheus metrics from simulated nodes
 
 ### Getting the Executable Test Node
 You have two options for obtaining the `main` executable:
@@ -33,13 +33,13 @@ Build the `main` executable directly from the source.
 
 ```bash
 #Navigate to the parent directory
-cd ../
+cd ../nim-test-node/
 
 #Compile with required flags
 nim c -d:chronicles_colors=None --threads:on -d:metrics -d:libp2p_network_protocols_metrics -d:release main
 
 #Move the executable to the shadow directory
-mv ./main shadow/
+mv ./nim-test-node/main ../shadow/
 ```
 
 ### Running Simulations
