@@ -72,7 +72,7 @@ proc connectToBootstraps*(switch: Switch, muxer: string, service: string
     var backoff = 1.seconds
     for attempt in 1..10:
       try:
-        let remotePeerId: PeerId = await switch.connect(addr, allowUnknownPeerId = true)
+        let remotePeerId: PeerId = await switch.connect(addr, allowUnknownPeerId = true).wait(10.seconds)
         notice "Connected to bootstrap", address = addr, peerId = remotePeerId
         bootstraps.add((remotePeerId, @[addr]))
         break

@@ -43,6 +43,7 @@ proc runProbe*(kad: KadDHT) {.async.} =
       targetKey = targetPeer.toKey()
 
     try:
+      notice "Probe: Finding node", target = $targetPeer
       let peers = await kad.findNode(targetKey).wait(30.seconds)
 
     except CatchableError as exc:
