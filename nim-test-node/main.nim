@@ -8,8 +8,15 @@ import libp2p/protocols/[mix, mix/mix_protocol]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
+from times import getTime, toUnixFloat, `-`, initTime, `$`, inMilliseconds, Time
 from nativesockets import getHostname
 
+
+template toUnixNanoseconds(t: times.Time): int64 =
+  (t.toUnixFloat() * 1_000_000_000).int64
+
+template fromUnixNanoseconds(ns: int64): times.Time =
+  initTime(ns div 1_000_000_000, ns mod 1_000_000_000)
 
 proc msgIdProvider(m: Message): Result[MessageId, ValidationResult] =
   return ok(($m.data.hash).toBytes())
@@ -18,18 +25,27 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
   var messagesChunks: CountTable[uint64]
 
   return proc(topic: string, data: seq[byte]) {.async, gcsafe.} =
-    let sentUint = uint64.fromBytesLE(data)
-    # warm-up
-    if sentUint < 1000000: return
-
-    messagesChunks.inc(sentUint)
-    if messagesChunks[sentUint] < chunks: return
     let
-      sentMoment = nanoseconds(int64(uint64.fromBytesLE(data)))
-      sentNanosecs = nanoseconds(sentMoment - seconds(sentMoment.seconds))
-      sentDate = initTime(sentMoment.seconds, sentNanosecs)
-      diff = getTime() - sentDate
-    echo sentUint, " milliseconds: ", diff.inMilliseconds()
+      timestampNs = uint64.fromBytesLE(data[0 ..< 8]).int64
+      sendTime = fromUnixNanoseconds(timestampNs)
+      msgId = uint64.fromBytesLE(data[8 ..< 16])
+      recvTime = getTime()
+      delay = recvTime - sendTime
+
+    # warm-up
+    if timestampNs < 1000000: return
+
+    # Log received message
+    info "Received message",
+      msgId = msgId,
+      sentAt = timestampNs,
+      current = recvTime.toUnixNanoseconds(),
+      delayMs = delay.inMilliseconds()
+
+    messagesChunks.inc(msgId)  # Use msgId instead of timestamp for tracking
+    if messagesChunks[msgId] < chunks: return
+
+    echo msgId, " milliseconds: ", delay.inMilliseconds()
 
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
   return ValidationResult.Accept
@@ -38,15 +54,21 @@ proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.a
 proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
   let
     now = getTime()
-    nowInt = seconds(now.toUnix()) + nanoseconds(times.nanosecond(now))
+    nowInt = now.toUnixFloat() * 1_000_000_000.0  # seconds + nanoseconds as float
+    msgId = uint64(rand(high(int64)))  # Safe 0..<2^63 range
+
   var
     res = 0
-    #create payload with timestamp, so the receiver can discover elapsed time
-    nowBytes = @(toBytesLE(uint64(nowInt.nanoseconds))) & newSeq[byte](msgSize div chunks)
+    nowBytes = @(toBytesLE(uint64(nowInt))) & @(toBytesLE(msgId)) &
+             newSeq[byte](msgSize div chunks - 16)
+
+  info "Sent message",
+    msgId = msgId,
+    timestamp = getTime().toUnixNanoseconds()
 
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
-    nowBytes[10] = byte(chunk)
+    nowBytes[16] = byte(chunk)
     res = if mountsMix:
       await gossipSub.publish(topic, nowBytes,
         publishParams = some(PublishParams(skipMCache: true, useCustomConn: true)),
@@ -72,7 +94,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
             jsonBody = parseJson(string.fromBytes(bodyBytes))
             topic = jsonBody["topic"].getStr()
             msgSize = jsonBody["msgSize"].getInt()
-            version = jsonBody["version"].getInt()     #check for compatible version?
+            version = jsonBody["version"].getInt()
 
           info "controller message ", command = req.uri.path, topic = topic, size = msgSize, version = version
           let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, topic)
