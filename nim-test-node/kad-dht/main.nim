@@ -38,6 +38,11 @@ proc main {.async.} =
     while true: await sleepAsync(1.hours)
 
   of RoleNormal:
+    let jitter = myId * 200
+    if jitter > 0:
+      notice "Startup jitter", delayMs = jitter
+      await sleepAsync(jitter.milliseconds)
+
     var bootAddressesRes = await connectToBootstraps(switch, muxer, service)
     let bootAddresses = bootAddressesRes.valueOr:
       error "Failed to discover bootstrap nodes", service = service, err = error
@@ -50,6 +55,11 @@ proc main {.async.} =
     while true: await sleepAsync(1.hours)
 
   of RoleProbe:
+    let jitter = myId * 200
+    if jitter > 0:
+      notice "Startup jitter", delayMs = jitter
+      await sleepAsync(jitter.milliseconds)
+
     var bootAddressesRes = await connectToBootstraps(switch, muxer, service)
     let bootAddresses = bootAddressesRes.valueOr:
       error "Failed to discover bootstrap nodes", service = service, err = error

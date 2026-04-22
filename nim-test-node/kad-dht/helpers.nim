@@ -19,6 +19,7 @@ proc buildSwitch*(muxer: string, address: string): Switch =
       .withRng(crypto.newRng())
       .withAddresses(@[MultiAddress.init(address).tryGet()])
       .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+      .withMaxConnections(200)
 
   case muxer.toLowerAscii()
   of "quic":
@@ -69,13 +70,19 @@ proc connectToBootstraps*(switch: Switch, muxer: string, service: string
   var lastErr = ""
 
   for addr in addrs:
-    try:
-      let remotePeerId: PeerId = await switch.connect(addr, allowUnknownPeerId = true)
-      notice "Connected to bootstrap", address = addr, peerId = remotePeerId
-      bootstraps.add((remotePeerId, @[addr]))
-    except CatchableError as exc:
-      lastErr = exc.msg
-      warn "Failed to connect to bootstrap", address = addr, error = exc.msg
+    var backoff = 1.seconds
+    for attempt in 1..10:
+      try:
+        let remotePeerId: PeerId = await switch.connect(addr, allowUnknownPeerId = true).wait(10.seconds)
+        notice "Connected to bootstrap", address = addr, peerId = remotePeerId
+        bootstraps.add((remotePeerId, @[addr]))
+        break
+      except CatchableError as exc:
+        lastErr = exc.msg
+        warn "Failed to connect to bootstrap, retrying",
+          address = addr, attempt = attempt, backoff = backoff, error = exc.msg
+        await sleepAsync(backoff)
+        backoff = min(backoff * 2, 30.seconds)
 
   if bootstraps.len == 0:
     return err("Could not connect to any bootstrap resolved from '" & service &
