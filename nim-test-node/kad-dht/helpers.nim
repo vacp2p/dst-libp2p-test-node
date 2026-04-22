@@ -19,6 +19,7 @@ proc buildSwitch*(muxer: string, address: string): Switch =
       .withRng(crypto.newRng())
       .withAddresses(@[MultiAddress.init(address).tryGet()])
       .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
+      .withMaxConnections(200)
 
   case muxer.toLowerAscii()
   of "quic":
