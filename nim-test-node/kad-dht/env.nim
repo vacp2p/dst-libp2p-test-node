@@ -17,8 +17,8 @@ let
 proc getPeerDetails*(): Result[(int, string, string, NodeType, string), string] =
   let 
     hostname = getHostname()
-    #myId = parseInt(hostname.split('-')[^1])
-    myId = 0
+    myId = try: parseInt(hostname.split('-')[^1])
+           except ValueError: 0
     muxer = getEnv("MUXER", "yamux")
     address = if muxer.toLowerAscii() == "quic":
       "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
