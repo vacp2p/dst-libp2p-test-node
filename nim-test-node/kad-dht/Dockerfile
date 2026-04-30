@@ -21,7 +21,9 @@ COPY test_node.nimble .
 
 RUN git config --global http.sslVerify false
 
-RUN nimble install -dy
+RUN --mount=type=cache,target=/root/.nimble/pkgs \
+    --mount=type=cache,target=/root/.nimble/pkgs2 \
+    nimble install -dy
 
 # Copy the rest of the source code
 COPY . .
