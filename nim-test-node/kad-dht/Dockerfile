@@ -1,5 +1,5 @@
 # Create the build image
-FROM debian:bookworm-slim AS build
+FROM --platform=linux/amd64 debian:bookworm-slim AS build
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -15,19 +15,24 @@ RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
 ENV PATH="/root/.nimble/bin:${PATH}"
 
 WORKDIR /node
-COPY . .
+
+# Only copy the nimble file first to leverage Docker layer caching
+COPY test_node.nimble .
 
 RUN git config --global http.sslVerify false
 
 RUN nimble install -dy
 
-RUN nimble c \
+# Copy the rest of the source code
+COPY . .
+
+RUN nim c \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     --passL:"-static-libgcc -static-libstdc++" \
-    main
+    main.nim
 
-FROM debian:bookworm-slim
+FROM --platform=linux/amd64 debian:bookworm-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
