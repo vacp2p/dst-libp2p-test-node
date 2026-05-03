@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nim-quic-publisher
+  namespace: libp2p-lab
+spec:
+  restartPolicy: Never
+  containers:
+    - name: publisher
+      image: mamoutoudiarra/nimlibp2p-publisher:latest
+      imagePullPolicy: IfNotPresent
+      command:
+        - sh
+        - -c
+        - |
+          python /app/traffic.py \
+            --peer-selection service \
+            --pubsub-topic test \
+            --msg-size-bytes 1024 \
+            --messages 900 \
+            --delay-seconds 1 \
+            --port 8645

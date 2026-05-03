@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  nimp2p-service:
+    image: mamoutoudiarra/nim-libp2p-test:quic-no-pacing
+    restart: unless-stopped
+    environment:
+      PEERS: "100"
+      CONNECTTO: "10"
+      MUXER: "quic"
+      FRAGMENTS: "1"
+      SHADOWENV: "false"
+      SELFTRIGGER: "false"
+      SERVICE: "nimp2p-service"
+      MAXCONNECTIONS: "128"
+    expose:
+      - "5000/udp"   # libp2p QUIC
+      - "8008"       # metrics
+      - "8645"       # publish controller
+    networks:
+      - gossipnet
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8645 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 75s
+    deploy:
+      replicas: 100
+
+  publisher:
+    image: mamoutoudiarra/nimlibp2p-publisher:latest
+    depends_on:
+      nimp2p-service:
+        condition: service_healthy
+    networks:
+      - gossipnet
+    command: >
+      python /app/traffic.py
+      --peer-selection service
+      --pubsub-topic test
+      --msg-size-bytes 1024
+      --messages 900
+      --delay-seconds 1
+      --port 8645
+    deploy:
+      replicas: 1
+
+networks:
+  gossipnet:
+    driver: bridge

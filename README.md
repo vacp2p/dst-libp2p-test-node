@@ -50,10 +50,10 @@ nim-libp2p test node supports mplex, yamux, and quic transports. It also support
 
 ```bash
 git clone https://github.com/vacp2p/dst-libp2p-test-node.git
-cd dst-libp2p-test-node
+cd dst-libp2p-test-node/nim-test-node
 
 # Build Docker image
-docker build -t nim-libp2p-test .
+docker build . -f Dockerfile_amd64 -t nim-libp2p-test:quic-no-pacing .
 docker tag nim-libp2p-test user/refactored-test-node:vx.x
 
 # Extract binary for Shadow
@@ -64,5 +64,62 @@ docker rm temp
 
 #### Deployment
 
-Please see [K8s deployment utilities](https://github.com/vacp2p/10ksim/tree/master/deployment-utilities/docker_utilities/nimlibp2p/publisher_headless) for K8s deployments. See [shadow directory](https://github.com/vacp2p/dst-libp2p-test-node/tree/master/shadow) for shadow simulator experiments.
+##### Docker Compose
 
+Run a local 100-node GossipSub network using Docker Compose:
+
+```bash
+cd nim-test-node
+docker compose up -d
+```
+
+The docker-compose configuration includes:
+- 100 replicas of nim-libp2p test nodes
+- Health checks (readiness after 75s, liveness every 10s)
+- Service discovery via `nimp2p-service` DNS name
+- Publisher service that automatically injects messages once nodes are healthy
+
+The publisher service waits for nodes to pass health checks, then runs:
+```bash
+python /app/traffic.py \
+  --peer-selection service \
+  --pubsub-topic test \
+  --msg-size-bytes 1024 \
+  --messages 900 \
+  --delay-seconds 1 \
+  --port 8645
+```
+
+##### Kubernetes
+
+Deploy a 100-node GossipSub network on Kubernetes using the manifests:
+
+- `nimlibp2p.yaml` : Namespace, headless Service, and StatefulSet
+- `publisher.yaml` : Message injection pod
+
+```bash
+# Deploy namespace, service, and statefulset
+kubectl apply -f nimlibp2p.yaml
+
+# Wait for all pods to be ready (~2 minutes)
+kubectl wait --for=condition=ready pod -l app=nim-quic -n libp2p-lab --timeout=180s
+
+# Deploy publisher once all nodes are running
+kubectl apply -f publisher.yaml
+
+# Monitor pods
+kubectl get pods -n libp2p-lab -w
+
+# Check logs
+kubectl logs -f --max-log-requests 100 -n libp2p-lab -l app=nim-quic --all-containers=true --prefix=true
+
+# Delete deployment
+kubectl delete -f publisher.yaml
+kubectl delete -f nimlibp2p.yaml
+```
+
+##### Shadow Simulator
+
+See [shadow directory](https://github.com/vacp2p/dst-libp2p-test-node/tree/master/shadow) for Shadow simulator experiments.
+
+For additional K8s deployment utilities, see [10ksim deployment utilities](https://github.com/vacp2p/10ksim/tree/master/deployment-utilities/docker_utilities/nimlibp2p/publisher_headless).
