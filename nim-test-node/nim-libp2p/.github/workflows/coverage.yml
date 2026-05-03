@@ -1,0 +1,69 @@
+name: Coverage
+
+on:
+  # On push to common branches, this computes the coverage that PRs will use for diff
+  push:
+    branches:
+      - master
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codecov:
+    name: Run coverage and upload to codecov
+    runs-on: ubuntu-22.04
+    env:
+      CICOV: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Nim
+        uses: "./.github/actions/install_nim"
+        with:
+          os: linux
+          cpu: amd64
+          shell: bash
+
+      - name: Restore deps from cache
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: nimbledeps
+          key: nimbledeps-${{ hashFiles('.pinned') }}
+
+      - name: Install deps
+        if: ${{ steps.deps-cache.outputs.cache-hit != 'true' }}
+        run: |
+          nimble install_pinned
+
+      - name: Setup coverage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lcov build-essential git curl
+          mkdir coverage
+
+      - name: Run test suite with coverage flags
+        run: |
+          export NIMFLAGS="--lineDir:on --passC:-fprofile-arcs --passC:-ftest-coverage --passL:-fprofile-arcs --passL:-ftest-coverage"
+          nimble test
+
+      - name: Run coverage
+        run: |
+          find nimcache -name *.c -delete
+          lcov --capture --directory nimcache --output-file coverage/coverage.info
+          lcov --extract coverage/coverage.info "${PWD}/libp2p/*" --output-file coverage/coverage.f.info
+          genhtml coverage/coverage.f.info --output-directory coverage/output
+
+      - name: Upload coverage to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/coverage.f.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}

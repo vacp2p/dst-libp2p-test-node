@@ -1,0 +1,12 @@
+header:
+  license:
+    content:
+      | 
+      # SPDX-License-Identifier: Apache-2.0 OR MIT
+      # Copyright (c) Status Research & Development GmbH 
+  paths:
+  - "**/*.nim"
+  paths-ignore:
+  - "**/lsquic_ffi.nim"
+  - "prelude.nim"
+  comment: on-failure

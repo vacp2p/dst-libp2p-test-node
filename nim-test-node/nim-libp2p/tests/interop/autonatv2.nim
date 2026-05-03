@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+# Copyright (c) Status Research & Development GmbH 
+
+import net, chronos
+import
+  ../../libp2p/[
+    builders,
+    peerid,
+    wire,
+    protocols/connectivity/autonatv2/service,
+    protocols/connectivity/autonatv2/types,
+  ]
+import ../tools/crypto
+
+proc autonatInteropTest*(
+    ourAddr: string,
+    otherAddr: string,
+    otherPeerId: PeerId,
+    timeout: Duration = 5.minutes,
+): Future[bool] {.async.} =
+  var switch = SwitchBuilder
+    .new()
+    .withRng(rng())
+    .withAddresses(@[MultiAddress.init(ourAddr).get()])
+    .withAutonatV2Server()
+    .withAutonatV2(
+      serviceConfig = AutonatV2ServiceConfig.new(scheduleInterval = Opt.some(1.seconds))
+    )
+    .withTcpTransport()
+    .withYamux()
+    .withNoise()
+    .build()
+
+  let awaiter = newFuture[void]()
+
+  proc statusAndConfidenceHandler(
+      networkReachability: NetworkReachability, confidence: Opt[float]
+  ) {.async: (raises: [CancelledError]).} =
+    if networkReachability != NetworkReachability.Unknown and confidence.isSome() and
+        confidence.get() >= 0.3:
+      if not awaiter.finished:
+        awaiter.complete()
+
+  let service = cast[AutonatV2Service](switch.services[1])
+  service.setStatusAndConfidenceHandler(statusAndConfidenceHandler)
+
+  await switch.start()
+  defer:
+    await switch.stop()
+  await switch.connect(otherPeerId, @[MultiAddress.init(otherAddr).get()])
+
+  # await for network reachability with some timeout,
+  # to prevent waiting indefinitely
+  await awaiter.wait(timeout)
+
+  echo "Network reachability: ", service.networkReachability
+
+  # if awaiter has completed then autonat tests has passed.
+  return awaiter.completed()
