@@ -50,6 +50,9 @@ RUN echo 'import strutils; echo "OK"' > temp.nim && nim r temp.nim && rm temp.ni
 
 RUN nim --version
 RUN nimble --version
+RUN cd /node/nim-lsquic && nimble install -y --verbose
+RUN cd /node/nim-libp2p && nimble install -y --verbose
+
 RUN nimble install -dy --verbose | tee /tmp/install.log && grep -A 20 "libp2p" /tmp/install.log | grep -oP '\b\d+\.\d+\.\d+\b' | head -n1 > ./libp2p_version
 
 RUN nimble c \
