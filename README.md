@@ -53,7 +53,7 @@ git clone https://github.com/vacp2p/dst-libp2p-test-node.git
 cd dst-libp2p-test-node/nim-test-node
 
 # Build Docker image
-docker build . -f Dockerfile_amd64 -t nim-libp2p-test:quic-no-pacing .
+docker build . -f Dockerfile_amd64 -t mamoutoudiarra/nim-libp2p-test:quic-no-pacing
 docker tag nim-libp2p-test user/refactored-test-node:vx.x
 
 # Extract binary for Shadow
