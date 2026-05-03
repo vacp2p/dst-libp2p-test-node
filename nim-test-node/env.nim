@@ -1,4 +1,4 @@
-import strutils, os, osproc
+import strutils, os, osproc, hashes
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
@@ -17,7 +17,6 @@ let
 proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] =
   let 
     hostname = getHostname()
-    myId = parseInt(hostname.split('-')[^1])
     networkSize = parseInt(getEnv("PEERS", "100"))
     connectTo = parseInt(getEnv("CONNECTTO", "10"))
     muxer = getEnv("MUXER", "yamux")
@@ -27,6 +26,15 @@ proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] 
     else:
       "/ip4/0.0.0.0/tcp/" & $myPort
   
+  # Determine peer ID: try hostname suffix first, fallback to hash for Docker Compose
+  var myId: int
+  let suffix = hostname.split('-')[^1]
+  try:
+    myId = parseInt(suffix)
+  except ValueError:
+    # Docker Compose uses hex container IDs - use hash mod networkSize
+    myId = abs(hash(hostname)) mod networkSize
+
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
     return err("Unknown muxer type : " & muxer)
 
