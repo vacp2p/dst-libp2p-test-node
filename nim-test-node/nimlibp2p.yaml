@@ -3,6 +3,19 @@ kind: Namespace
 metadata:
   name: libp2p-lab
 ---
+# LSQUIC Performance Test - Kubernetes Deployment
+# ================================================
+#
+# Available image tags:
+#   mamoutoudiarra/nim-libp2p-test:default              - v1.16.0 + old lsquic (HIGH latency)
+#   mamoutoudiarra/nim-libp2p-test:libp2p_v1153         - v1.15.3 + old lsquic (HIGH latency)
+#   mamoutoudiarra/nim-libp2p-test:lsquic_030           - v1.16.0 + lsquic v0.3.0 (LOW latency)
+#   mamoutoudiarra/nim-libp2p-test:lsquic_030_no_pacing - v0.3.0 + pacing disabled (LOW latency)
+#   mamoutoudiarra/nim-libp2p-test:lsquic_030_bbr       - v0.3.0 + BBR CC (LOW latency)
+#
+# To switch scenarios, change the image tag in the StatefulSet below.
+#
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -47,7 +60,9 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: nim-libp2p-test
-          image: mamoutoudiarra/nim-libp2p-test:latest
+          # Change tag to test different scenarios:
+          # :default, :libp2p_v1153, :lsquic_030, :lsquic_030_no_pacing, :lsquic_030_bbr
+          image: mamoutoudiarra/nim-libp2p-test:lsquic_030
           imagePullPolicy: IfNotPresent
           env:
             - name: PEERS

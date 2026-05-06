@@ -48,16 +48,29 @@ nim-libp2p test node supports mplex, yamux, and quic transports. It also support
 
 #### Building
 
+Three Dockerfile variants are available for different LSQUIC configurations:
+
+| Dockerfile | Congestion Control | Pacing | Recommended For |
+|------------|-------------------|--------|-----------------|
+| `Dockerfile_amd64_no_pacing` | Cubic | Disabled | Low-latency environments (recommended) |
+| `Dockerfile_amd64_bbr` | BBR | Enabled | General use with pacing |
+| `Dockerfile_amd64_legacy` | Cubic | Enabled | Testing only (may cause latency issues) |
+
 ```bash
 git clone https://github.com/vacp2p/dst-libp2p-test-node.git
 cd dst-libp2p-test-node/nim-test-node
 
-# Build Docker image
-docker build . -f Dockerfile_amd64 -t mamoutoudiarra/nim-libp2p-test:quic-no-pacing
-docker tag nim-libp2p-test user/refactored-test-node:vx.x
+# Recommended: Cubic without pacing (best for low-latency)
+docker build -f Dockerfile_amd64_no_pacing -t nim-libp2p-test:no-pacing .
+
+# BBR with pacing (good alternative)
+docker build -f Dockerfile_amd64_bbr -t nim-libp2p-test:bbr .
+
+# Legacy: Cubic with pacing (may cause latency issues)
+docker build -f Dockerfile_amd64_legacy -t nim-libp2p-test:legacy .
 
 # Extract binary for Shadow
-docker create --name temp nim-libp2p-test
+docker create --name temp nim-libp2p-test:no-pacing
 docker cp temp:/node/main shadow/main
 docker rm temp
 ```

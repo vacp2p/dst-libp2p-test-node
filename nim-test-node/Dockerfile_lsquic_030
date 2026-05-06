@@ -1,0 +1,87 @@
+# nim-libp2p v1.16.0 with lsquic v0.3.0 (default settings)
+# This should show LOW latency - the "good" state
+FROM debian:bookworm-slim AS builder
+
+WORKDIR /node
+
+COPY . .
+
+RUN apt-get update && apt-get install -y \
+    curl git build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y \
+    gcc-multilib g++-multilib libc6-dev-i386 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y \
+    curl git build-essential ca-certificates \
+    gcc libc6-dev-i386 \
+    libssl3 iproute2 procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    iproute2 \
+    curl \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+
+RUN git config --global http.sslVerify false
+
+RUN curl https://nim-lang.org/download/nim-2.2.6-linux_x64.tar.xz -o /tmp/nim.tar.xz \
+    && tar -xf /tmp/nim.tar.xz -C /tmp \
+    && cp -r /tmp/nim-2.2.6/* /usr/local \
+    && rm -rf /usr/local/nim* && mv /tmp/nim-2.2.6 /usr/local/nim-2.2.6
+
+
+RUN nimble refresh
+
+RUN ln -sf /usr/local/nim-2.2.6/bin/nim /usr/local/bin/nim
+RUN ln -sf /usr/local/nim-2.2.6/bin/nimble /usr/local/bin/nimble
+RUN ln -sf /usr/local/nim-2.2.6/bin/nim /usr/local/bin/nimcheck
+
+RUN echo 'import strutils; echo "OK"' > temp.nim && nim r temp.nim && rm temp.nim
+
+RUN nim --version
+RUN nimble --version
+
+# Checkout nim-libp2p to v1.16.0
+RUN cd /node/nim-libp2p && git checkout 35ecbb14394454d94c4683420cbf80a249dc5d3e
+
+# Checkout nim-lsquic to v0.3.0
+RUN cd /node/nim-lsquic && git checkout v0.3.0
+
+# Initialize lsquic submodules (boringssl)
+RUN cd /node/nim-lsquic && git submodule update --init --recursive
+
+# Modify nim-libp2p to use lsquic by package name
+RUN sed -i 's|"https://github.com/vacp2p/nim-lsquic#6ae249c5d9f5eba9999704e1ffe77483cbf8fcdd"|"lsquic"|g' /node/nim-libp2p/libp2p.nimble
+
+RUN cd /node/nim-lsquic && nimble install -y --verbose
+RUN cd /node/nim-libp2p && nimble install -y --verbose
+
+RUN nimble install -dy --verbose | tee /tmp/install.log && grep -A 20 "libp2p" /tmp/install.log | grep -oP '\b\d+\.\d+\.\d+\b' | head -n1 > ./libp2p_version
+
+RUN nimble c \
+    --os:linux --cpu:amd64 --passL:"-static -mmusl" \
+    -d:chronicles_colors=None --threads:on --mm:refc \
+    -d:metrics -d:libp2p_network_protocols_metrics -d:release \
+    --passL:"-static-libgcc -static-libstdc++" \
+    main
+
+
+RUN chmod +x /node/main
+RUN nim --version > nim_version
+RUN nimble --version > nimble_version
+
+EXPOSE 5000 8008 8645
+
+ENTRYPOINT ["/node/main"]

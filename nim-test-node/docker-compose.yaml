@@ -1,50 +1,95 @@
 version: "3.9"
 
+# LSQUIC Performance Test Suite
+# =============================
+#
+# This docker-compose tests different lsquic configurations to measure
+# GossipSub message delivery latency with QUIC transport.
+#
+# USAGE:
+#   # Terminal 1: Run the test
+#   TEST=<scenario> docker compose up --build
+#
+#   # Terminal 2: Monitor latency (messages > 10ms)
+#   docker compose logs -f | grep 'milliseconds:' | awk '$NF > 10'
+#
+# SCENARIOS:
+#   TEST=default              - nim-libp2p v1.16.0 wich uses lsquic 6ae249c (0.0.1)
+#                               Expected: HIGH latency (seconds-level delays)
+#
+#   TEST=libp2p_v1153         - nim-libp2p v1.15.3 which still uses lsquic 6ae249c (0.0.1)
+#                               Expected: HIGH latency
+#
+#   TEST=lsquic_030           - nim-libp2p v1.16.0 + lsquic v0.3.0
+#                               Expected: LOW latency (the fix)
+#
+#   TEST=lsquic_030_no_pacing - nim-libp2p v1.16.0 + lsquic v0.3.0 + pacing disabled
+#                               Expected: LOW latency
+#
+#   TEST=lsquic_030_bbr       - nim-libp2p v1.16.0 + lsquic v0.3.0 + BBR CC
+#                               Expected: LOW latency
+#
+# EXAMPLES:
+#   # Test baseline (high latency)
+#   TEST=default docker compose up --build
+#
+#   # Test with lsquic 0.3.0 fix
+#   TEST=lsquic_030 docker compose up --build
+#
+#   # Clean up
+#   docker compose down -v
+
+x-node-common: &node-common
+  build:
+    context: .
+    dockerfile: Dockerfile_${TEST:-default}
+  image: mamoutoudiarra/nim-libp2p-test:${TEST:-default}
+  restart: unless-stopped
+  environment:
+    PEERS: "20"
+    CONNECTTO: "10"
+    MUXER: "quic"
+    FRAGMENTS: "1"
+    SHADOWENV: "false"
+    SELFTRIGGER: "false"
+    SERVICE: "nimp2p-service"
+    MAXCONNECTIONS: "128"
+
+  expose:
+    - "5000/udp"   # libp2p QUIC
+    - "8008"       # metrics
+    - "8645"       # publish controller
+
+  networks:
+    - gossipnet
+
+  healthcheck:
+    test: ["CMD-SHELL", "curl -so /dev/null http://localhost:8645/ || exit 1"]
+    interval: 15s
+    timeout: 10s
+    retries: 20
+    start_period: 90s
+
+  deploy:
+      replicas: 20
+      restart_policy:
+        condition: any
+
 services:
   nimp2p-service:
-    image: mamoutoudiarra/nim-libp2p-test:quic-no-pacing
-    restart: unless-stopped
-    environment:
-      PEERS: "100"
-      CONNECTTO: "10"
-      MUXER: "quic"
-      FRAGMENTS: "1"
-      SHADOWENV: "false"
-      SELFTRIGGER: "false"
-      SERVICE: "nimp2p-service"
-      MAXCONNECTIONS: "128"
-    expose:
-      - "5000/udp"   # libp2p QUIC
-      - "8008"       # metrics
-      - "8645"       # publish controller
-    networks:
-      - gossipnet
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8645 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 75s
-    deploy:
-      replicas: 100
+    <<: *node-common
 
   publisher:
-    image: mamoutoudiarra/nimlibp2p-publisher:latest
+    build:
+      context: .
+      dockerfile: Dockerfile_publisher_amd64
+    image: mamoutoudiarra/nimlibp2p-publisher:custom
     depends_on:
       nimp2p-service:
         condition: service_healthy
     networks:
       - gossipnet
-    command: >
-      python /app/traffic.py
-      --peer-selection service
-      --pubsub-topic test
-      --msg-size-bytes 1024
-      --messages 900
-      --delay-seconds 1
-      --port 8645
-    deploy:
-      replicas: 1
+    command: ["--peer-selection", "service", "--service-host", "nimp2p-service", "--pubsub-topic", "test", "--msg-size-bytes", "1024", "--messages", "900", "--delay-seconds", "1", "--port", "8645"]
 
 networks:
   gossipnet:
