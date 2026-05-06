@@ -78,7 +78,7 @@ cd nim-test-node
 TEST=lsquic_030 docker compose up --build
 
 # Or build manually
-docker build -f Dockerfile_lsquic_030 -t nim-libp2p-test:lsquic_030 .
+docker build -f ../nim-test-node/Dockerfile_lsquic_030 -t nim-libp2p-test:lsquic_030 .
 ```
 
 #### Deployment
