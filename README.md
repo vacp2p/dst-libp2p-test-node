@@ -2,6 +2,17 @@
 
 This repository contains [nim-libp2p](https://github.com/vacp2p/nim-libp2p), [go-libp2p](https://github.com/libp2p/go-libp2p) and [rust-libp2p](https://github.com/libp2p/rust-libp2p) based implementations of GossipSub test nodes that can run in both [Kubernetes (K8s)](https://kubernetes.io/) and [Shadow simulator](https://github.com/shadow/shadow) environments.
 
+## Quick Start
+
+### Clone the Repository
+
+```bash
+git clone --recurse-submodules https://github.com/vacp2p/dst-libp2p-test-node.git
+cd dst-libp2p-test-node
+git checkout mamoutou/disable-lsquic-pacing
+git submodule update --init --recursive
+```
+
 ### Overview
 
 These test nodes are designed for performance testing and evaluation of libp2p's GossipSub protocol under various network conditions. The implementations support:
@@ -48,59 +59,64 @@ nim-libp2p test node supports mplex, yamux, and quic transports. It also support
 
 #### Building
 
-Three Dockerfile variants are available for different LSQUIC configurations:
+**LSQUIC Performance Test Scenarios:**
 
-| Dockerfile | Congestion Control | Pacing | Recommended For |
-|------------|-------------------|--------|-----------------|
-| `Dockerfile_amd64_no_pacing` | Cubic | Disabled | Low-latency environments (recommended) |
-| `Dockerfile_amd64_bbr` | BBR | Enabled | General use with pacing |
-| `Dockerfile_amd64_legacy` | Cubic | Enabled | Testing only (may cause latency issues) |
+| Dockerfile | nim-libp2p | nim-lsquic | Expected Latency |
+|------------|------------|------------|------------------|
+| `Dockerfile_default` | v1.16.0 | 6ae249c (0.0.1) | **HIGH** (seconds) |
+| `Dockerfile_libp2p_v1153` | v1.15.3 | 6ae249c (0.0.1) | **HIGH** (seconds) |
+| `Dockerfile_lsquic_030` | v1.16.0 | v0.3.0 | **LOW** (ms) ✓ |
+| `Dockerfile_lsquic_030_no_pacing` | v1.16.0 | v0.3.0 + pacing=0 | **LOW** (ms) |
+| `Dockerfile_lsquic_030_bbr` | v1.16.0 | v0.3.0 + BBR CC | **LOW** (ms) |
+
+> **Recommendation:** Update nim-libp2p v1.16.0 to use `lsquic >= 0.3.0` in its nimble dependencies to fix the high latency issue.
 
 ```bash
-git clone https://github.com/vacp2p/dst-libp2p-test-node.git
-cd dst-libp2p-test-node/nim-test-node
+cd nim-test-node
 
-# Recommended: Cubic without pacing (best for low-latency)
-docker build -f Dockerfile_amd64_no_pacing -t nim-libp2p-test:no-pacing .
+# Build a specific scenario
+TEST=lsquic_030 docker compose up --build
 
-# BBR with pacing (good alternative)
-docker build -f Dockerfile_amd64_bbr -t nim-libp2p-test:bbr .
-
-# Legacy: Cubic with pacing (may cause latency issues)
-docker build -f Dockerfile_amd64_legacy -t nim-libp2p-test:legacy .
-
-# Extract binary for Shadow
-docker create --name temp nim-libp2p-test:no-pacing
-docker cp temp:/node/main shadow/main
-docker rm temp
+# Or build manually
+docker build -f Dockerfile_lsquic_030 -t nim-libp2p-test:lsquic_030 .
 ```
 
 #### Deployment
 
 ##### Docker Compose
 
-Run a local 100-node GossipSub network using Docker Compose:
+Run a test network (20 nodes + publisher) using Docker Compose:
 
 ```bash
 cd nim-test-node
-docker compose up -d
+
+# Terminal 1: Start the test network
+TEST=lsquic_030 docker compose up --build
+
+# Terminal 2: Monitor latency (messages > 10ms)
+docker compose logs -f | grep 'milliseconds:' | awk '$NF > 10'
 ```
 
-The docker-compose configuration includes:
-- 100 replicas of nim-libp2p test nodes
-- Health checks (readiness after 75s, liveness every 10s)
-- Service discovery via `nimp2p-service` DNS name
-- Publisher service that automatically injects messages once nodes are healthy
+**Available test scenarios:**
 
-The publisher service waits for nodes to pass health checks, then runs:
 ```bash
-python /app/traffic.py \
-  --peer-selection service \
-  --pubsub-topic test \
-  --msg-size-bytes 1024 \
-  --messages 900 \
-  --delay-seconds 1 \
-  --port 8645
+# Baseline - old lsquic (expect HIGH latency)
+TEST=default docker compose up --build
+
+# nim-libp2p v1.15.3 (expect HIGH latency)
+TEST=libp2p_v1153 docker compose up --build
+
+# lsquic v0.3.0 - THE FIX (expect LOW latency)
+TEST=lsquic_030 docker compose up --build
+
+# lsquic v0.3.0 with pacing disabled
+TEST=lsquic_030_no_pacing docker compose up --build
+
+# lsquic v0.3.0 with BBR congestion control
+TEST=lsquic_030_bbr docker compose up --build
+
+# Cleanup
+docker compose down -v
 ```
 
 ##### Kubernetes
@@ -110,7 +126,22 @@ Deploy a 100-node GossipSub network on Kubernetes using the manifests:
 - `nimlibp2p.yaml` : Namespace, headless Service, and StatefulSet
 - `publisher.yaml` : Message injection pod
 
+**Available image tags:**
+- `mamoutoudiarra/nim-libp2p-test:default` - v1.16.0 + old lsquic (HIGH latency)
+- `mamoutoudiarra/nim-libp2p-test:libp2p_v1153` - v1.15.3 + old lsquic (HIGH latency)
+- `mamoutoudiarra/nim-libp2p-test:lsquic_030` - v1.16.0 + lsquic v0.3.0 (LOW latency) ✓
+- `mamoutoudiarra/nim-libp2p-test:lsquic_030_no_pacing` - v0.3.0 + pacing disabled
+- `mamoutoudiarra/nim-libp2p-test:lsquic_030_bbr` - v0.3.0 + BBR CC
+
 ```bash
+cd nim-test-node
+
+# Build and push images
+for scenario in default libp2p_v1153 lsquic_030 lsquic_030_no_pacing lsquic_030_bbr; do
+  docker build -f Dockerfile_${scenario} -t mamoutoudiarra/nim-libp2p-test:${scenario} .
+  docker push mamoutoudiarra/nim-libp2p-test:${scenario}
+done
+
 # Deploy namespace, service, and statefulset
 kubectl apply -f nimlibp2p.yaml
 
@@ -120,15 +151,17 @@ kubectl wait --for=condition=ready pod -l app=nim-quic -n libp2p-lab --timeout=1
 # Deploy publisher once all nodes are running
 kubectl apply -f publisher.yaml
 
-# Monitor pods
-kubectl get pods -n libp2p-lab -w
-
-# Check logs
-kubectl logs -f --max-log-requests 100 -n libp2p-lab -l app=nim-quic --all-containers=true --prefix=true
+# Monitor latency
+kubectl logs -f -n libp2p-lab -l app=nim-quic | grep 'milliseconds:' | awk '$NF > 10'
 
 # Delete deployment
 kubectl delete -f publisher.yaml
 kubectl delete -f nimlibp2p.yaml
+```
+
+To switch scenarios, edit the image tag in `nimlibp2p.yaml`:
+```yaml
+image: mamoutoudiarra/nim-libp2p-test:lsquic_030  # Change this tag
 ```
 
 ##### Shadow Simulator
