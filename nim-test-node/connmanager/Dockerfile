@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/root/.nimble/pkgs \
 
 COPY . .
 
-RUN nim c \
+RUN nimble c \
     -d:chronicles_colors=None \
     -d:chronicles_log_level=TRACE \
     -d:chronicles_runtime_filtering=on \
