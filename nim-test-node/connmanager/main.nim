@@ -1,4 +1,4 @@
-import strutils, os, sequtils
+import sequtils
 import chronos, chronicles
 import metrics, metrics/chronos_httpserver
 import libp2p, libp2p/[multiaddress, crypto/secp]
