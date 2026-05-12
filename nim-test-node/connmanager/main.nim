@@ -103,6 +103,16 @@ proc runPeer(cfg: PeerConfig) {.async.} =
         if switch.connectedPeers(Direction.Out).len == 0:
           await resolveAndConnect(switch, cfg.hubAddr)
         await sleepAsync(1.seconds)
+    elif cfg.reconnect == ReconnectBeforeGrace:
+      # Cycle the connection every reconnectIntervalS seconds so the peer always
+      # appears freshly connected to the hub and stays within the grace window.
+      while true:
+        await resolveAndConnect(switch, cfg.hubAddr)
+        await sleepAsync(cfg.reconnectIntervalS.seconds)
+        for peerId in switch.connectedPeers(Direction.Out):
+          try: await switch.disconnect(peerId)
+          except CatchableError: discard
+        notice "Cycled connection (grace abuse)", intervalS = cfg.reconnectIntervalS
     else:
       await resolveAndConnect(switch, cfg.hubAddr)
       while true: await sleepAsync(1.hours)

@@ -9,7 +9,7 @@ type
     RoleHub, RolePeer
 
   ReconnectMode* = enum
-    ReconnectNone, ReconnectAggressive
+    ReconnectNone, ReconnectAggressive, ReconnectBeforeGrace
 
   HubConfig* = object
     lowWater*: int
@@ -24,6 +24,7 @@ type
     hubAddr*: string
     dialOut*: bool             # true = peer dials hub; false = peer listens, hub dials it
     reconnect*: ReconnectMode
+    reconnectIntervalS*: int   # for ReconnectBeforeGrace: cycle connection every N seconds
     privateKey*: Opt[PrivateKey]
 
 let
@@ -58,13 +59,29 @@ proc parseHubConfig*(): HubConfig =
 proc parsePeerConfig*(): PeerConfig =
   result.hubAddr = getEnv("HUB_ADDR", "hub:5000")
   result.dialOut = getEnv("DIAL_OUT", "true").toLowerAscii() == "true"
-  result.reconnect =
-    if getEnv("RECONNECT", "none").toLowerAscii() == "aggressive":
-      ReconnectAggressive
-    else:
-      ReconnectNone
 
-  let privKeyHex = getEnv("PRIVATE_KEY", "")
+  result.reconnect =
+    case getEnv("RECONNECT", "none").toLowerAscii()
+    of "aggressive": ReconnectAggressive
+    of "before_grace": ReconnectBeforeGrace
+    else: ReconnectNone
+
+  result.reconnectIntervalS = parseInt(getEnv("RECONNECT_INTERVAL_S", "55"))
+
+  # PRIVATE_KEYS: comma-separated list; pod picks its key by ordinal extracted
+  # from the StatefulSet hostname (e.g. "protected-2" → index 2).
+  # Falls back to PRIVATE_KEY (single key) if PRIVATE_KEYS is not set.
+  let privKeysStr = getEnv("PRIVATE_KEYS", "")
+  let privKeyHex =
+    if privKeysStr.len > 0:
+      let keys = privKeysStr.split(',')
+      let hostname = getHostname()
+      let parts = hostname.split('-')
+      let idx = try: parseInt(parts[^1]) except CatchableError: 0
+      if idx < keys.len: keys[idx].strip() else: ""
+    else:
+      getEnv("PRIVATE_KEY", "")
+
   if privKeyHex.len > 0:
     try:
       let keyBytes = hexToSeqByte(privKeyHex)
