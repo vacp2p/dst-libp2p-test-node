@@ -21,7 +21,7 @@ type
     outboundPeers*: seq[string]  # addresses hub dials proactively (Group A in Run A)
 
   PeerConfig* = object
-    hubAddr*: string
+    hubAddrs*: seq[string]     # one or more hub addresses to connect to (multi-hub support)
     dialOut*: bool             # true = peer dials hub; false = peer listens, hub dials it
     reconnect*: ReconnectMode
     reconnectIntervalS*: int   # for ReconnectBeforeGrace: cycle connection every N seconds
@@ -57,7 +57,17 @@ proc parseHubConfig*(): HubConfig =
       result.outboundPeers.add(s)
 
 proc parsePeerConfig*(): PeerConfig =
-  result.hubAddr = getEnv("HUB_ADDR", "hub:5000")
+  # HUB_ADDRS: comma-separated list of hub addresses (multi-hub).
+  # Falls back to HUB_ADDR (single address) for backwards compatibility.
+  let hubAddrsStr = getEnv("HUB_ADDRS", "")
+  if hubAddrsStr.len > 0:
+    for entry in hubAddrsStr.split(','):
+      let s = entry.strip()
+      if s.len > 0:
+        result.hubAddrs.add(s)
+  else:
+    result.hubAddrs = @[getEnv("HUB_ADDR", "hub:5000")]
+
   result.dialOut = getEnv("DIAL_OUT", "true").toLowerAscii() == "true"
 
   result.reconnect =
