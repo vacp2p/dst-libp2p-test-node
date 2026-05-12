@@ -27,7 +27,7 @@ COPY . .
 
 RUN nimble c \
     -d:chronicles_colors=None \
-    -d:chronicles_log_level=TRACE \
+    -d:chronicles_log_level=DEBUG \
     -d:chronicles_runtime_filtering=on \
     --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \

@@ -8,4 +8,4 @@ license       = "MIT"
 
 requires "nim >= 2.2.0",
          "nimcrypto 0.6.4",
-         "libp2p#6593b68f115ef04928edd3b125d2a270addeb3f9"
+         "libp2p#7cc4280e2efd5e6c2ebd732ce33d309376a9627e"
