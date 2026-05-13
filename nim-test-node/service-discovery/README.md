@@ -19,7 +19,8 @@ nimble c \
   main
 ```
 
-If you need local `nim-libp2p` changes, keep `nimble.paths` pointing to your local repo root.
+If you need local `nim-libp2p` changes, do `nimble setup -l` and modify `nimble.paths` pointing to your local repo root.
+
 
 ## Environment variables
 
