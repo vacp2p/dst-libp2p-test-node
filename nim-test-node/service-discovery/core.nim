@@ -17,7 +17,7 @@ proc startAdvertisingServices*(
       service = service.id,
       dataLen = service.data.len
 
-proc startDiscoveringServices*(
+proc startDiscoveringServicesLog*(
     disco: ServiceDiscovery, serviceIds: seq[string]
 ) =
   if serviceIds.len == 0:
@@ -25,11 +25,7 @@ proc startDiscoveringServices*(
     return
 
   for serviceId in serviceIds:
-    let started = disco.startDiscovering(serviceId)
-    if started:
-      notice "Discovering service", service = serviceId
-    else:
-      debug "Service was already being discovered", service = serviceId
+    notice "Discovering service", service = serviceId
 
 proc runLookupLoop*(
     disco: ServiceDiscovery, serviceIds: seq[string], lookupInterval: Duration

@@ -58,11 +58,11 @@ proc main() {.async.} =
     while true:
       await sleepAsync(1.hours)
   of RoleDiscoverer:
-    disco.startDiscoveringServices(cfg.discoverServices)
+    disco.startDiscoveringServicesLog(cfg.discoverServices)
     await disco.runLookupLoop(cfg.discoverServices, cfg.lookupInterval)
   of RoleHybrid:
     disco.startAdvertisingServices(advertisedServices)
-    disco.startDiscoveringServices(cfg.discoverServices)
+    disco.startDiscoveringServicesLog(cfg.discoverServices)
     await disco.runLookupLoop(cfg.discoverServices, cfg.lookupInterval)
 
 waitFor(main())
