@@ -100,6 +100,7 @@ proc mountServiceDiscovery*(
     switch: Switch,
     bootstrapNodes: seq[(PeerId, seq[MultiAddress])],
     safetyParam: float64,
+    ipSimCoefficient: float64,
     advertExpiry: Duration,
     xprPublishing: bool,
 ): Future[ServiceDiscovery] {.async.} =
@@ -110,6 +111,7 @@ proc mountServiceDiscovery*(
 
   let discoCfg = ServiceDiscoveryConfig.new(
     safetyParam = safetyParam,
+    ipSimCoefficient = ipSimCoefficient,
     advertExpiry = advertExpiry,
   )
 

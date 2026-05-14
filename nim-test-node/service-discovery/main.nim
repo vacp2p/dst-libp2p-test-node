@@ -38,6 +38,7 @@ proc main() {.async.} =
     switch,
     bootstrapNodes,
     cfg.safetyParam,
+    cfg.ipSimCoefficient,
     cfg.advertExpiry,
     cfg.xprPublishing,
   )
