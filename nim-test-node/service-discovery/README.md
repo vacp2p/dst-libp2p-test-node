@@ -44,7 +44,7 @@ If you need local `nim-libp2p` changes, do `nimble setup -l` and modify `nimble.
 1. Bootstrap:
 
 ```bash
-NODE_ROLE=RoleBootstrap PORT=5001 ./main
+NODE_ROLE=RoleBootstrap PORT=5001 HEALTH_PORT=8645 ./main
 ```
 
 2. Advertiser:
@@ -55,6 +55,7 @@ PORT=5002 \
 SERVICE=127.0.0.1:5001 \
 ADVERTISE_SERVICES=chat,mail \
 SERVICE_DATA=status \
+HEALTH_PORT=8647 \
 ./main
 ```
 
@@ -66,6 +67,7 @@ PORT=5003 \
 SERVICE=127.0.0.1:5001 \
 DISCOVER_SERVICES=chat,mail \
 LOOKUP_INTERVAL_SECONDS=10 \
+HEALTH_PORT=8648 \
 ./main
 ```
 
@@ -77,6 +79,7 @@ PORT=5004 \
 SERVICE=127.0.0.1:5001 \
 ADVERTISE_SERVICES=chat \
 DISCOVER_SERVICES=chat \
+HEALTH_PORT=8649 \
 ./main
 ```
 
