@@ -4,6 +4,8 @@ Test node for evaluating nim-libp2p's connection manager introduced in [nim-libp
 
 The nim-libp2p version pinned in `test_node.nimble` to [`dst/connmanager-logging`](https://github.com/vacp2p/nim-libp2p/tree/dst/connmanager-logging) (debug-level logging for connection manager events).
 
+Task GitHub issue: https://github.com/vacp2p/10ksim/issues/252
+
 ## Compile
 
 ```
