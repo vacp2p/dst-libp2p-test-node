@@ -146,6 +146,7 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     startupJitterMs: startupJitterMs,
     healthPort: Port(healthPort),
     safetyParam: safetyParam,
+    ipSimCoefficient: ipSimCoefficient,
     advertExpiry: advertExpirySeconds.seconds,
     xprPublishing: xprPublishing,
   )
