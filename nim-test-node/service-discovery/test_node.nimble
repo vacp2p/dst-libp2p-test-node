@@ -1,6 +1,6 @@
 mode = ScriptMode.Verbose
 
-packageName   = "service_discovery_test_node"
+packageName   = "test_node"
 version       = "0.1.0"
 author        = "Status Research & Development GmbH"
 description   = "A test node for libp2p service discovery"
