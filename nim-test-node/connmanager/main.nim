@@ -1,7 +1,8 @@
-import sequtils
+import sequtils, strutils
 import chronos, chronicles
 import metrics, metrics/chronos_httpserver
 import libp2p, libp2p/[multiaddress, crypto/secp]
+from nativesockets import getHostname
 import env
 
 logScope:
@@ -72,6 +73,19 @@ proc runHub(cfg: HubConfig) {.async.} =
 
   for address in cfg.outboundPeers:
     asyncSpawn resolveAndConnect(switch, address)
+
+  # Hub-to-hub: each hub dials all other hub replicas.
+  # Pod ordinal is the last dash-separated segment of the StatefulSet hostname
+  # (e.g. "hub-1" → index 1). We skip our own index and dial the rest.
+  if cfg.numHubs > 1:
+    let hostname = getHostname()
+    let parts = hostname.split('-')
+    let myIdx = try: parseInt(parts[^1]) except CatchableError: 0
+    for i in 0..<cfg.numHubs:
+      if i != myIdx:
+        let hubAddr = "hub-" & $i & ".nimp2p-service." & cfg.hubNamespace & ".svc.cluster.local:5000"
+        notice "Dialing peer hub", target = hubAddr
+        asyncSpawn resolveAndConnect(switch, hubAddr)
 
   while true: await sleepAsync(1.hours)
 

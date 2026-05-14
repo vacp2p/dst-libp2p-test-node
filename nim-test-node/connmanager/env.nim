@@ -19,6 +19,8 @@ type
     maxConnections*: int       # 0 = no hard cap (Runs A/B/C), >0 adds semaphore (Run D)
     protectedPeers*: seq[PeerId]
     outboundPeers*: seq[string]  # addresses hub dials proactively (Group A in Run A)
+    numHubs*: int              # total hub replicas; >1 triggers hub-to-hub dialing
+    hubNamespace*: string      # k8s namespace used to build peer-hub DNS addresses
 
   PeerConfig* = object
     hubAddrs*: seq[string]     # one or more hub addresses to connect to (multi-hub support)
@@ -55,6 +57,9 @@ proc parseHubConfig*(): HubConfig =
     let s = entry.strip()
     if s.len > 0:
       result.outboundPeers.add(s)
+
+  result.numHubs = parseInt(getEnv("NUM_HUBS", "1"))
+  result.hubNamespace = getEnv("HUB_NAMESPACE", "nimlibp2p")
 
 proc parsePeerConfig*(): PeerConfig =
   # HUB_ADDRS: comma-separated list of hub addresses (multi-hub).
