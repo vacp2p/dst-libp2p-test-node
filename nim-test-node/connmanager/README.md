@@ -1,10 +1,8 @@
 # Connection Manager Test Node
 
-Test node for evaluating nim-libp2p's connection manager. Supports two roles in a hub-and-spoke topology: a hub with configurable watermark trimming, and peers with configurable connection strategies.
+Test node for evaluating nim-libp2p's connection manager introduced in [nim-libp2p#2284](https://github.com/vacp2p/nim-libp2p/pull/2284). Supports two roles in a hub-and-spoke topology: a hub with configurable watermark trimming, and peers with configurable connection strategies.
 
-Task: https://github.com/orgs/vacp2p/projects/9/views/1 (Connection Manager evaluation)
-
-Depends on the `connmngr-examples` branch of nim-libp2p, pinned in `test_node.nimble`.
+The nim-libp2p version pinned in `test_node.nimble` to [`dst/connmanager-logging`](https://github.com/vacp2p/nim-libp2p/tree/dst/connmanager-logging) (debug-level logging for connection manager events).
 
 ## Compile
 
