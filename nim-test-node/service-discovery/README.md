@@ -8,7 +8,7 @@ in local setups or Kubernetes.
 From this folder:
 
 ```bash
-nimble c \
+nim c \
   -d:chronicles_colors=None \
   --threads:on \
   --mm:refc \
