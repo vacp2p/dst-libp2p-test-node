@@ -21,6 +21,7 @@ type
     startupJitterMs*: int
     healthPort*: Port
     safetyParam*: float64
+    ipSimCoefficient*: float64
     advertExpiry*: Duration
     xprPublishing*: bool
 
@@ -102,6 +103,11 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     return err(error)
   if safetyParam < 0.0:
     return err("SD_SAFETY_PARAM must be >= 0")
+
+  let ipSimCoefficient = parseFloatEnv("SD_IP_SIM_COEFF", "0.0").valueOr:
+    return err(error)
+  if ipSimCoefficient < 0.0:
+    return err("SD_IP_SIM_COEFF must be >= 0")
 
   let advertExpirySeconds = parseIntEnv("SD_ADVERT_EXPIRY_SECONDS", "900").valueOr:
     return err(error)
