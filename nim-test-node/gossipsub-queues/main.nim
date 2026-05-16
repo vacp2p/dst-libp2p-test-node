@@ -19,39 +19,51 @@ template toUnixNanoseconds(t: times.Time): int64 =
 template fromUnixNanoseconds(ns: int64): times.Time =
   initTime(ns div 1_000_000_000, ns mod 1_000_000_000)
 
+# Global variables for metric labels (set in main)
+var
+  gMuxer*: string = ""
+  gPeerId*: string = ""
+
 declareCounter(
   dst_testnode_publish_requests_total,
-  "number of /publish requests accepted by the test node"
+  "number of /publish requests accepted by the test node",
+  labels = ["muxer", "peer_id"]
 )
 
 declareCounter(
   dst_testnode_publish_failures_total,
-  "number of failed local publish attempts"
+  "number of failed local publish attempts",
+  labels = ["muxer", "peer_id"]
 )
 
 declareCounter(
   dst_testnode_received_chunks_total,
-  "number of application-level message chunks received"
+  "number of application-level message chunks received",
+  labels = ["muxer", "peer_id"]
 )
 
 declareCounter(
   dst_testnode_completed_messages_total,
-  "number of application-level messages fully received"
+  "number of application-level messages fully received",
+  labels = ["muxer", "peer_id"]
 )
 
 declareGauge(
   dst_testnode_last_message_delay_ms,
-  "last observed application-level end-to-end message delay in milliseconds"
+  "last observed application-level end-to-end message delay in milliseconds",
+  labels = ["muxer", "peer_id"]
 )
 
 declareGauge(
   dst_testnode_mesh_size,
-  "current GossipSub mesh size for the test topic"
+  "current GossipSub mesh size for the test topic",
+  labels = ["muxer", "peer_id"]
 )
 
 declareGauge(
   dst_testnode_topic_peers,
-  "current number of GossipSub peers for the test topic"
+  "current number of GossipSub peers for the test topic",
+  labels = ["muxer", "peer_id"]
 )
 proc getEnvInt(name: string, defaultValue: int): int =
   let value = getEnv(name, "")
@@ -125,15 +137,15 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
     if messagesChunks[msgId] < chunks: return
 
     echo msgId, " milliseconds: ", delay.inMilliseconds()
-    dst_testnode_completed_messages_total.inc()
-    dst_testnode_last_message_delay_ms.set(delay.inMilliseconds().int64)
+    dst_testnode_completed_messages_total.inc(labelValues = [gMuxer, gPeerId])
+    dst_testnode_last_message_delay_ms.set(delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId])
 
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
   return ValidationResult.Accept
 
 
 proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
-  dst_testnode_publish_requests_total.inc()
+  dst_testnode_publish_requests_total.inc(labelValues = [gMuxer, gPeerId])
   let
     now = getTime()
     nowInt = now.toUnixFloat() * 1_000_000_000.0  # seconds + nanoseconds as float
@@ -166,7 +178,7 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
     topicInTopics = (topic in gossipSub.topics),
     floodPublish = gossipSub.parameters.floodPublish
   if res <= 0:
-    dst_testnode_publish_failures_total.inc()
+    dst_testnode_publish_failures_total.inc(labelValues = [gMuxer, gPeerId])
   return (now, res)
 
 #http endpoint for detached controller
@@ -407,6 +419,10 @@ proc main {.async.} =
     (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
       error "Error reading peer settings ",  err = error
       return
+  
+  # Set global metric labels
+  gMuxer = muxer
+  
   var
     gossipSub: GossipSub
     # Mix protocol not available in this libp2p version
@@ -444,6 +460,9 @@ proc main {.async.} =
               .withMplex()
 
   let switch = builder.build()
+  
+  # Set peerId for metric labels
+  gPeerId = $switch.peerInfo.peerId
 
   # Mix protocol not available in this libp2p version
   # if mountsMix or usesMix:
@@ -483,8 +502,8 @@ proc main {.async.} =
   await sleepAsync(15.seconds)  # Allow multiple heartbeats to build mesh
   let meshSize = gossipSub.mesh.getOrDefault("test").len
   let peersConnected = gossipSub.gossipsub.getOrDefault("test").len
-  dst_testnode_mesh_size.set(meshSize.int64)
-  dst_testnode_topic_peers.set(peersConnected.int64)
+  dst_testnode_mesh_size.set(meshSize.int64, labelValues = [gMuxer, gPeerId])
+  dst_testnode_topic_peers.set(peersConnected.int64, labelValues = [gMuxer, gPeerId])
 
   info "Mesh details ",
     meshSize = meshSize,
