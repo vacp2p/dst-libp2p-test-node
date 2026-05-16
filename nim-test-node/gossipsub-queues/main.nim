@@ -19,10 +19,10 @@ template toUnixNanoseconds(t: times.Time): int64 =
 template fromUnixNanoseconds(ns: int64): times.Time =
   initTime(ns div 1_000_000_000, ns mod 1_000_000_000)
 
-# Global variables for metric labels (set in main)
+# Global variables for metric labels (set in main) - thread local for GC safety
 var
-  gMuxer*: string = ""
-  gPeerId*: string = ""
+  gMuxer* {.threadvar.}: string
+  gPeerId* {.threadvar.}: string
 
 declareCounter(
   dst_testnode_publish_requests_total,
