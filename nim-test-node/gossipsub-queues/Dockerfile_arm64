@@ -1,0 +1,49 @@
+FROM nimlang/nim:latest AS builder
+
+WORKDIR /node
+
+COPY . .
+
+RUN apt-get update && apt-get install -y \
+  curl git build-essential ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+RUN git config --global http.sslVerify false
+RUN git config --global --add safe.directory /node
+
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+  ca-certificates \
+  libssl3 \
+  iproute2 \
+  curl \
+  procps \
+  && rm -rf /var/lib/apt/lists/* \
+  && apt-get clean
+
+RUN git config --global http.sslVerify false
+
+RUN nimble refresh
+RUN nim --version
+RUN nimble --version
+
+RUN echo 'import strutils; echo "OK"' > temp.nim && nim r temp.nim && rm temp.nim
+
+RUN nimble install -dy --verbose | tee /tmp/install.log && grep -A 20 "libp2p" /tmp/install.log | grep -oP '\b\d+\.\d+\.\d+\b' | head -n1 > ./libp2p_version
+
+
+RUN nimble c \
+  --os:linux --cpu:arm64 --passL:"-static -mmusl" \
+  -d:chronicles_colors=None --threads:on --mm:refc \
+  -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:pubsubpeer_queue_metrics \
+  -d:libp2p_expensive_metrics -d:libp2p_agents_metrics \
+  --passL:"-static-libgcc -static-libstdc++" \
+  main
+
+
+RUN chmod +x /node/main
+RUN nim --version > nim_version
+RUN nimble --version > nimble_version
+
+EXPOSE 5000 8008 8645
+
+ENTRYPOINT ["/node/main"]
