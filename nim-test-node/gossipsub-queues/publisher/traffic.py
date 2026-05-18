@@ -5,7 +5,7 @@ import random
 import socket
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import aiohttp
 
@@ -23,13 +23,39 @@ class Target:
     url: str
 
 
+class Stats:
+    def __init__(self) -> None:
+        self.success = 0
+        self.failure = 0
+        self.total = 0
+        self.lock = asyncio.Lock()
+
+    async def record(self, ok: bool) -> None:
+        async with self.lock:
+            self.total += 1
+            if ok:
+                self.success += 1
+            else:
+                self.failure += 1
+
+    async def snapshot(self) -> Dict[str, float]:
+        async with self.lock:
+            success_rate = (self.success / self.total * 100.0) if self.total else 0.0
+            return {
+                "success": self.success,
+                "failure": self.failure,
+                "total": self.total,
+                "success_rate": success_rate,
+            }
+
+
 async def resolve_host(host: str) -> str:
     loop = asyncio.get_running_loop()
     start = time.time()
 
     try:
         ip = await loop.run_in_executor(None, socket.gethostbyname, host)
-        elapsed_ms = (time.time() - start) * 1000
+        elapsed_ms = (time.time() - start) * 1000.0
 
         logging.debug(
             "DNS host=%s ip=%s elapsed_ms=%.2f",
@@ -53,7 +79,50 @@ def build_pod_hostname(args: argparse.Namespace, node_id: int) -> str:
     return base
 
 
-async def resolve_target(args: argparse.Namespace, message_index: int) -> Target:
+def parse_target_ids(value: str) -> List[int]:
+    """
+    Parse target IDs.
+
+    Supported formats:
+      0
+      0,1,2
+      0-9
+      0-9,20,25-30
+    """
+    result: List[int] = []
+
+    for part in value.split(","):
+        part = part.strip()
+
+        if not part:
+            continue
+
+        if "-" in part:
+            start_s, end_s = part.split("-", 1)
+            start = int(start_s)
+            end = int(end_s)
+
+            if end < start:
+                raise ValueError(f"Invalid target ID range: {part}")
+
+            result.extend(range(start, end + 1))
+        else:
+            result.append(int(part))
+
+    return sorted(set(result))
+
+
+def parse_target_hosts(value: str) -> List[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+async def make_target(host: str, port: int) -> Target:
+    ip = await resolve_host(host)
+    url = f"http://{ip}:{port}/publish"
+    return Target(host=host, ip=ip, url=url)
+
+
+async def resolve_target_global(args: argparse.Namespace, message_index: int) -> Target:
     if args.peer_selection == "service":
         host = args.service_host
 
@@ -62,44 +131,69 @@ async def resolve_target(args: argparse.Namespace, message_index: int) -> Target
 
     elif args.peer_selection == "round-robin":
         node_count = args.end_id - args.start_id + 1
+
+        if node_count <= 0:
+            raise ValueError("--end-id must be >= --start-id for round-robin mode")
+
         node_id = args.start_id + (message_index % node_count)
         host = build_pod_hostname(args, node_id)
 
     elif args.peer_selection == "random-range":
+        if args.end_id < args.start_id:
+            raise ValueError("--end-id must be >= --start-id for random-range mode")
+
         node_id = random.randint(args.start_id, args.end_id)
         host = build_pod_hostname(args, node_id)
 
     else:
         raise ValueError(f"Unsupported peer selection: {args.peer_selection}")
 
-    ip = await resolve_host(host)
-    url = f"http://{ip}:{args.port}/publish"
+    return await make_target(host, args.port)
 
-    return Target(host=host, ip=ip, url=url)
+
+async def get_per_node_targets(args: argparse.Namespace) -> List[Target]:
+    if args.target_hosts:
+        hosts = parse_target_hosts(args.target_hosts)
+
+    elif args.target_ids:
+        ids = parse_target_ids(args.target_ids)
+        hosts = [build_pod_hostname(args, node_id) for node_id in ids]
+
+    else:
+        if args.end_id < args.start_id:
+            raise ValueError("--end-id must be >= --start-id")
+
+        ids = list(range(args.start_id, args.end_id + 1))
+        hosts = [build_pod_hostname(args, node_id) for node_id in ids]
+
+    targets = await asyncio.gather(
+        *[make_target(host, args.port) for host in hosts]
+    )
+
+    logging.info(
+        "resolved per-node targets count=%d hosts=%s",
+        len(targets),
+        ",".join(target.host for target in targets),
+    )
+
+    return list(targets)
 
 
 async def send_libp2p_msg(
     session: aiohttp.ClientSession,
     args: argparse.Namespace,
-    stats: Dict[str, int],
+    stats: Stats,
+    target: Target,
     message_index: int,
-):
-    target = await resolve_target(args, message_index)
-
+    worker_id: Optional[int] = None,
+) -> None:
     headers = {"Content-Type": "application/json"}
+
     body = {
         "topic": args.pubsub_topic,
         "msgSize": args.msg_size_bytes,
         "version": 1,
     }
-
-    logging.info(
-        "message=%d target_host=%s target_ip=%s url=%s",
-        message_index,
-        target.host,
-        target.ip,
-        target.url,
-    )
 
     start = time.time()
 
@@ -110,111 +204,216 @@ async def send_libp2p_msg(
             headers=headers,
             timeout=args.request_timeout,
         ) as response:
-            elapsed_ms = (time.time() - start) * 1000
+            elapsed_ms = (time.time() - start) * 1000.0
             response_text = await response.text()
 
-            stats["total"] += 1
-
-            if response.status == 200:
-                stats["success"] += 1
-            else:
-                stats["failure"] += 1
-
-            success_rate = (
-                (stats["success"] / stats["total"]) * 100
-                if stats["total"] > 0
-                else 0
-            )
+            ok = response.status == 200
+            await stats.record(ok)
+            snap = await stats.snapshot()
 
             logging.info(
-                "message=%d target=%s status=%d elapsed_ms=%.2f success=%d failure=%d total=%d success_rate=%.2f response=%s",
+                "worker=%s message=%d target_host=%s target_ip=%s status=%d "
+                "elapsed_ms=%.2f success=%d failure=%d total=%d success_rate=%.2f "
+                "response=%s",
+                worker_id,
                 message_index,
                 target.host,
+                target.ip,
                 response.status,
                 elapsed_ms,
-                stats["success"],
-                stats["failure"],
-                stats["total"],
-                success_rate,
+                snap["success"],
+                snap["failure"],
+                snap["total"],
+                snap["success_rate"],
                 response_text[:300],
             )
 
     except Exception as exc:
-        elapsed_ms = (time.time() - start) * 1000
+        elapsed_ms = (time.time() - start) * 1000.0
 
-        stats["total"] += 1
-        stats["failure"] += 1
-
-        success_rate = (
-            (stats["success"] / stats["total"]) * 100
-            if stats["total"] > 0
-            else 0
-        )
+        await stats.record(False)
+        snap = await stats.snapshot()
 
         logging.warning(
-            "message=%d target=%s exception=%s elapsed_ms=%.2f success=%d failure=%d total=%d success_rate=%.2f",
+            "worker=%s message=%d target_host=%s target_ip=%s exception=%s "
+            "elapsed_ms=%.2f success=%d failure=%d total=%d success_rate=%.2f",
+            worker_id,
             message_index,
             target.host,
+            target.ip,
             repr(exc),
             elapsed_ms,
-            stats["success"],
-            stats["failure"],
-            stats["total"],
-            success_rate,
+            snap["success"],
+            snap["failure"],
+            snap["total"],
+            snap["success_rate"],
         )
 
 
-async def main(args: argparse.Namespace):
-    stats = {
-        "success": 0,
-        "failure": 0,
-        "total": 0,
-    }
-
+async def run_global_mode(
+    args: argparse.Namespace,
+    session: aiohttp.ClientSession,
+    stats: Stats,
+) -> None:
     background_tasks = set()
     start_time = time.time()
     message_index = 0
 
-    timeout = aiohttp.ClientTimeout(total=args.request_timeout)
+    while True:
+        if args.messages is not None and message_index >= args.messages:
+            break
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        while True:
-            if args.messages is not None and message_index >= args.messages:
-                break
+        if (
+            args.duration_seconds is not None
+            and time.time() - start_time >= args.duration_seconds
+        ):
+            break
 
-            if (
-                args.duration_seconds is not None
-                and time.time() - start_time >= args.duration_seconds
-            ):
-                break
+        target = await resolve_target_global(args, message_index)
 
-            task = asyncio.create_task(
-                send_libp2p_msg(session, args, stats, message_index)
+        task = asyncio.create_task(
+            send_libp2p_msg(
+                session=session,
+                args=args,
+                stats=stats,
+                target=target,
+                message_index=message_index,
+                worker_id=None,
             )
+        )
 
-            background_tasks.add(task)
-            task.add_done_callback(background_tasks.discard)
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
 
-            message_index += 1
-            await asyncio.sleep(args.delay_seconds)
+        message_index += 1
 
-        if background_tasks:
-            await asyncio.gather(*background_tasks)
+        await asyncio.sleep(args.delay_seconds)
 
-    elapsed_s = time.time() - start_time
-    success_rate = (
-        (stats["success"] / stats["total"]) * 100
-        if stats["total"] > 0
-        else 0
-    )
+    if background_tasks:
+        await asyncio.gather(*background_tasks)
+
+
+async def per_node_worker(
+    worker_id: int,
+    target: Target,
+    args: argparse.Namespace,
+    session: aiohttp.ClientSession,
+    stats: Stats,
+) -> None:
+    """
+    Send messages to one selected node.
+
+    Example:
+      messages_per_node = 1000
+      rate_per_node = 5
+
+    This worker sends 1000 messages to its target node at 5 msg/s.
+
+    All per-node workers run in parallel.
+    """
+
+    if args.rate_per_node is not None:
+        if args.rate_per_node <= 0:
+            raise ValueError("--rate-per-node must be > 0")
+
+        delay_seconds = 1.0 / args.rate_per_node
+    else:
+        delay_seconds = args.delay_seconds
+
+    start_time = time.time()
+    message_index = 0
+
+    while True:
+        if (
+            args.messages_per_node is not None
+            and message_index >= args.messages_per_node
+        ):
+            break
+
+        if (
+            args.duration_seconds is not None
+            and time.time() - start_time >= args.duration_seconds
+        ):
+            break
+
+        await send_libp2p_msg(
+            session=session,
+            args=args,
+            stats=stats,
+            target=target,
+            message_index=message_index,
+            worker_id=worker_id,
+        )
+
+        message_index += 1
+
+        await asyncio.sleep(delay_seconds)
 
     logging.info(
-        "finished elapsed_s=%.2f success=%d failure=%d total=%d success_rate=%.2f",
+        "worker=%d target=%s finished local_messages=%d",
+        worker_id,
+        target.host,
+        message_index,
+    )
+
+
+async def run_per_node_mode(
+    args: argparse.Namespace,
+    session: aiohttp.ClientSession,
+    stats: Stats,
+) -> None:
+    targets = await get_per_node_targets(args)
+
+    if not targets:
+        raise RuntimeError("No targets selected for per-node mode")
+
+    workers = [
+        asyncio.create_task(
+            per_node_worker(
+                worker_id=i,
+                target=target,
+                args=args,
+                session=session,
+                stats=stats,
+            )
+        )
+        for i, target in enumerate(targets)
+    ]
+
+    await asyncio.gather(*workers)
+
+
+async def main(args: argparse.Namespace) -> None:
+    stats = Stats()
+    start_time = time.time()
+
+    timeout = aiohttp.ClientTimeout(total=args.request_timeout)
+
+    connector = aiohttp.TCPConnector(
+        ttl_dns_cache=300,
+    )
+
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+        if args.load_mode == "global":
+            await run_global_mode(args, session, stats)
+
+        elif args.load_mode == "per-node":
+            await run_per_node_mode(args, session, stats)
+
+        else:
+            raise ValueError(f"Unsupported load mode: {args.load_mode}")
+
+    elapsed_s = time.time() - start_time
+    snap = await stats.snapshot()
+
+    logging.info(
+        "finished load_mode=%s elapsed_s=%.2f success=%d failure=%d total=%d success_rate=%.2f",
+        args.load_mode,
         elapsed_s,
-        stats["success"],
-        stats["failure"],
-        stats["total"],
-        success_rate,
+        snap["success"],
+        snap["failure"],
+        snap["total"],
+        snap["success_rate"],
     )
 
 
@@ -238,79 +437,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "-d",
-        "--delay-seconds",
-        type=float,
-        default=1.0,
-        help="Delay between publish requests",
-    )
-
-    parser.add_argument(
-        "-m",
-        "--messages",
-        type=int,
-        default=None,
-        help="Number of messages to inject",
-    )
-
-    parser.add_argument(
-        "--duration-seconds",
-        type=float,
-        default=None,
-        help="Duration of the injection phase. Use either this or --messages.",
-    )
-
-    parser.add_argument(
-        "--peer-selection",
-        type=str,
-        choices=["service", "fixed", "round-robin", "random-range"],
-        default="service",
-        help="How to select the test node receiving /publish requests",
-    )
-
-    parser.add_argument(
-        "--service-host",
-        type=str,
-        default="nimp2p-service",
-        help="Kubernetes service hostname for service-based peer selection",
-    )
-
-    parser.add_argument(
-        "--pod-prefix",
-        type=str,
-        default="nim-quic-normal",
-        help="StatefulSet pod prefix for fixed/range selection",
-    )
-
-    parser.add_argument(
-        "--pod-domain",
-        type=str,
-        default="nimp2p-service",
-        help="Headless service DNS domain. Example: nimp2p-service",
-    )
-
-    parser.add_argument(
-        "--fixed-id",
-        type=int,
-        default=0,
-        help="Pod ordinal used with --peer-selection fixed",
-    )
-
-    parser.add_argument(
-        "--start-id",
-        type=int,
-        default=0,
-        help="Start ordinal for round-robin/random-range selection",
-    )
-
-    parser.add_argument(
-        "--end-id",
-        type=int,
-        default=99,
-        help="End ordinal for round-robin/random-range selection",
-    )
-
-    parser.add_argument(
         "-p",
         "--port",
         type=int,
@@ -319,27 +445,165 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--load-mode",
+        choices=["global", "per-node"],
+        default="global",
+        help=(
+            "global = one global stream of messages; "
+            "per-node = one stream per selected target node, all in parallel"
+        ),
+    )
+
+    # Global mode target selection.
+    parser.add_argument(
+        "--peer-selection",
+        choices=["service", "fixed", "round-robin", "random-range"],
+        default="service",
+        help="Target selection mode for global mode",
+    )
+
+    parser.add_argument(
+        "--service-host",
+        type=str,
+        default="nimp2p-service",
+        help="Service hostname used by peer-selection=service",
+    )
+
+    parser.add_argument(
+        "--fixed-id",
+        type=int,
+        default=0,
+        help="Target node ID used by peer-selection=fixed",
+    )
+
+    parser.add_argument(
+        "--start-id",
+        type=int,
+        default=0,
+        help="Start node ID for round-robin, random-range, or per-node default target range",
+    )
+
+    parser.add_argument(
+        "--end-id",
+        type=int,
+        default=0,
+        help="End node ID for round-robin, random-range, or per-node default target range",
+    )
+
+    # Hostname construction.
+    parser.add_argument(
+        "--pod-prefix",
+        type=str,
+        default="nim-libp2p",
+        help="StatefulSet pod prefix, e.g. nim-libp2p",
+    )
+
+    parser.add_argument(
+        "--pod-domain",
+        type=str,
+        default="",
+        help=(
+            "Optional pod DNS suffix. Example: "
+            "nimp2p-service"
+        ),
+    )
+
+    # Load amount / rate.
+    parser.add_argument(
+        "-m",
+        "--messages",
+        type=int,
+        default=None,
+        help="Total messages for global mode",
+    )
+
+    parser.add_argument(
+        "--messages-per-node",
+        type=int,
+        default=None,
+        help="Messages sent to each selected node in per-node mode",
+    )
+
+    parser.add_argument(
+        "--duration-seconds",
+        type=float,
+        default=None,
+        help="Run duration. Can be used in global or per-node mode.",
+    )
+
+    parser.add_argument(
+        "-d",
+        "--delay-seconds",
+        type=float,
+        default=1.0,
+        help=(
+            "Delay between messages. In per-node mode this is per node "
+            "unless --rate-per-node is set."
+        ),
+    )
+
+    parser.add_argument(
+        "--rate-per-node",
+        type=float,
+        default=None,
+        help=(
+            "Per-node send rate in messages/second. "
+            "Only applies to per-node mode and overrides --delay-seconds."
+        ),
+    )
+
+    # Per-node target selection.
+    parser.add_argument(
+        "--target-ids",
+        type=str,
+        default="",
+        help=(
+            "Per-node mode target IDs. Examples: "
+            "0, 0-9, 0-9,20,25-30"
+        ),
+    )
+
+    parser.add_argument(
+        "--target-hosts",
+        type=str,
+        default="",
+        help=(
+            "Per-node mode explicit target hostnames, comma-separated. "
+            "Example: nim-libp2p-slow-0,nim-libp2p-1,nim-libp2p-2"
+        ),
+    )
+
+    # HTTP settings.
+    parser.add_argument(
         "--request-timeout",
         type=float,
-        default=10.0,
+        default=30.0,
         help="HTTP request timeout in seconds",
     )
 
     args = parser.parse_args()
 
-    if args.messages is None and args.duration_seconds is None:
-        parser.error("Set either --messages or --duration-seconds")
+    if args.load_mode == "global":
+        if args.messages is None and args.duration_seconds is None:
+            raise ValueError(
+                "global mode requires --messages or --duration-seconds"
+            )
 
-    if args.messages is not None and args.duration_seconds is not None:
-        parser.error("Use either --messages or --duration-seconds, not both")
+    if args.load_mode == "per-node":
+        if args.messages_per_node is None and args.duration_seconds is None:
+            raise ValueError(
+                "per-node mode requires --messages-per-node or --duration-seconds"
+            )
 
-    if args.start_id > args.end_id:
-        parser.error("--start-id must be <= --end-id")
+        if args.target_hosts and args.target_ids:
+            raise ValueError(
+                "Use either --target-hosts or --target-ids, not both"
+            )
 
     return args
 
 
 if __name__ == "__main__":
     parsed_args = parse_args()
-    logging.info("args=%s", parsed_args)
+    logging.info("%s", parsed_args)
     asyncio.run(main(parsed_args))
