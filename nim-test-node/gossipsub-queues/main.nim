@@ -48,9 +48,22 @@ declareCounter(
   labels = ["muxer", "peer_id"]
 )
 
+declareCounter(
+  dst_testnode_message_delay_ms_sum,
+  "sum of message delays in milliseconds (use with rate)",
+  labels = ["muxer", "peer_id"]
+)
+
+declareHistogram(
+  dst_testnode_message_delay_ms,
+  "message delay histogram for percentile analysis",
+  labels = ["muxer", "peer_id"],
+  buckets = [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0]
+)
+
 declareGauge(
   dst_testnode_last_message_delay_ms,
-  "last observed application-level end-to-end message delay in milliseconds",
+  "last observed message delay in milliseconds (real-time)",
   labels = ["muxer", "peer_id"]
 )
 
@@ -138,6 +151,8 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
 
     echo msgId, " milliseconds: ", delay.inMilliseconds()
     dst_testnode_completed_messages_total.inc(labelValues = [gMuxer, gPeerId])
+    dst_testnode_message_delay_ms_sum.inc(delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId])
+    dst_testnode_message_delay_ms.observe(delay.inMilliseconds().float64, labelValues = [gMuxer, gPeerId])
     dst_testnode_last_message_delay_ms.set(delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId])
 
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
