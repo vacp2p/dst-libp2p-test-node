@@ -1,0 +1,74 @@
+# Kaniko build Job — builds shadow/Dockerfile natively on an amd64 lab worker
+# and pushes the resulting image to Docker Hub.
+#
+# Prereqs:
+#   1. The branch (alan/shadow-k8s) must be pushed to origin so kaniko can clone it.
+#   2. A docker-registry Secret called `dockerhub-creds` must exist in this namespace:
+#        kubectl create secret docker-registry dockerhub-creds \
+#          --docker-server=https://index.docker.io/v1/ \
+#          --docker-username=radiken \
+#          --docker-password=<docker-hub-access-token> \
+#          --docker-email=<email> \
+#          -n zerotesting-shadow
+#
+# Apply:
+#   kubectl apply -f shadow/kaniko-build-job.yaml
+#
+# Tail logs:
+#   kubectl -n zerotesting-shadow logs -f job/shadow-image-build
+#
+# Clean up:
+#   kubectl -n zerotesting-shadow delete job shadow-image-build
+#
+# After it completes, radiken/dst-shadow-nim:latest will be on Docker Hub and
+# the runtime Job (k8s-job.yaml) can pull it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: shadow-image-build
+  namespace: zerotesting-shadow
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: shadow-image-build
+    spec:
+      restartPolicy: Never
+      # Pin to a worker — Shadow's Rust workspace is CPU-heavy and benefits from
+      # the 128-core boxes. Use node-04 here so node-05 stays free for the
+      # runtime sim Job.
+      nodeSelector:
+        kubernetes.io/hostname: node-04.ih-eu-mda1.misc.vaclab
+      containers:
+        - name: kaniko
+          # Pinned digest to avoid surprises; bump deliberately.
+          image: gcr.io/kaniko-project/executor:v1.23.2
+          args:
+            - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/alan/shadow-k8s"
+            - "--dockerfile=shadow/Dockerfile"
+            - "--destination=radiken/dst-shadow-nim:latest"
+            # Speed knobs: cache base layers in-cluster to make subsequent
+            # builds faster. Cache lives in Docker Hub as a separate repo tag.
+            - "--cache=true"
+            - "--cache-repo=radiken/dst-shadow-nim-cache"
+            - "--snapshot-mode=redo"
+            - "--use-new-run"
+          volumeMounts:
+            - name: docker-config
+              mountPath: /kaniko/.docker
+          resources:
+            requests:
+              cpu: "8"
+              memory: "8Gi"
+            limits:
+              cpu: "32"
+              memory: "16Gi"
+      volumes:
+        - name: docker-config
+          secret:
+            secretName: dockerhub-creds
+            items:
+              - key: .dockerconfigjson
+                path: config.json
