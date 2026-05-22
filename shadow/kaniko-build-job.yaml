@@ -46,7 +46,7 @@ spec:
           # Pinned digest to avoid surprises; bump deliberately.
           image: gcr.io/kaniko-project/executor:v1.23.2
           args:
-            - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/alan/shadow-k8s"
+            - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/Alan/shadow-k8s"
             - "--dockerfile=shadow/Dockerfile"
             - "--destination=radiken/dst-shadow-nim:latest"
             # Speed knobs: cache base layers in-cluster to make subsequent
