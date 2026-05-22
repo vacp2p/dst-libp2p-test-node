@@ -37,11 +37,16 @@ COPY nim-test-node/ ./
 
 RUN nimble refresh
 RUN nimble install -dy --verbose
+
+# Important: we deliberately DO NOT pass `-static -mmusl -static-libgcc -static-libstdc++`
+# here, unlike the k8s test-node build. Shadow's syscall interposition relies on LD_PRELOAD,
+# which only works against dynamically linked ELFs — a static binary makes Shadow bail with
+# "not a dynamically linked ELF". The trade-off (binary depends on glibc/libssl/etc. on the
+# host) is fine because we control the Shadow runner image below.
 RUN nimble c \
-    --os:linux --cpu:amd64 --passL:"-static -mmusl" \
+    --os:linux --cpu:amd64 \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
-    --passL:"-static-libgcc -static-libstdc++" \
     main \
     && chmod +x /node/main
 
