@@ -25,7 +25,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: shadow-image-build
+  name: shadow-base-build
   namespace: zerotesting-shadow
 spec:
   backoffLimit: 0
@@ -33,7 +33,7 @@ spec:
   template:
     metadata:
       labels:
-        app: shadow-image-build
+        app: shadow-base-build
     spec:
       restartPolicy: Never
       # Pin to a worker — Shadow's Rust workspace is CPU-heavy and benefits from
@@ -48,11 +48,11 @@ spec:
           args:
             - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/Alan/shadow-k8s"
             - "--dockerfile=shadow/Dockerfile"
-            - "--destination=radiken/dst-shadow-nim:latest"
+            - "--destination=radiken/dst-shadow-base:latest"
             # Speed knobs: cache base layers in-cluster to make subsequent
             # builds faster. Cache lives in Docker Hub as a separate repo tag.
             - "--cache=true"
-            - "--cache-repo=radiken/dst-shadow-nim-cache"
+            - "--cache-repo=radiken/dst-shadow-base-cache"
             - "--snapshot-mode=redo"
             - "--use-new-run"
           volumeMounts:
