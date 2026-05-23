@@ -19,7 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake findutils libclang-dev libc-dbg \
     libglib2.0-0 libglib2.0-dev make netbase \
-    python3 python3-networkx python3-yaml xz-utils util-linux \
+    python3 python3-networkx python3-yaml python3-requests xz-utils util-linux \
     gcc g++ git ca-certificates curl gawk \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
