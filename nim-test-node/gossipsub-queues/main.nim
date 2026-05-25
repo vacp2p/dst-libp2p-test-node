@@ -4,8 +4,6 @@ import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
-# Mix protocol not available in this libp2p version
-# import libp2p/protocols/[mix, mix/mix_protocol]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
@@ -178,12 +176,6 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
     nowBytes[16] = byte(chunk)
-    # Mix protocol not available in this libp2p version
-    # res = if mountsMix:
-    #   await gossipSub.publish(topic, nowBytes,
-    #     publishParams = Opt.some(PublishParams(skipMCache: true, useCustomConn: true)),
-    #   )
-    # else:
     res = await gossipSub.publish(topic, nowBytes)
   info "publish result", 
     res = res,
@@ -247,8 +239,6 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
-# Mix protocol not available in this libp2p version
-# proc initializeGossipsub(switch: Switch, anonymize: bool, mixProto: Opt[MixProtocol] = Opt.none(MixProtocol)): GossipSub =
 proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
   return GossipSub.init(
       switch = switch,
@@ -257,14 +247,6 @@ proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
       verifySignature = false,
       anonymize = anonymize,
       rng = libp2p.newRng(),
-      # Mix callbacks disabled - mix protocol not available in this libp2p version
-      # customConnCallbacks = if mountsMix and mixProto.isSome:
-      #   Opt.some(CustomConnectionCallbacks(
-      #     customConnCreationCB: makeMixConnCb(mixProto.get()),
-      #     customPeerSelectionCB: makeMixPeerSelectCb()
-      #   ))
-      # else:
-      #   Opt.none(CustomConnectionCallbacks)
     )
 
 proc configureGossipsubParams(gossipSub: GossipSub) =
@@ -440,28 +422,12 @@ proc main {.async.} =
   
   var
     gossipSub: GossipSub
-    # Mix protocol not available in this libp2p version
-    # mixPublicKey: SkPublicKey
-    # mixPrivKey: SkPrivateKey
     builder = SwitchBuilder
       .new()
       .withNoise()
       .withAddress(MultiAddress.init(address).tryGet())
       .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
 
-  # Mix protocol not available in this libp2p version
-  # if mountsMix or usesMix:
-  #   let initResult = initializeMix(myId).valueOr:
-  #     error "Failed to initialize mix", err = error
-  #     return
-  #   let multiAddr = initResult[0]
-  #   mixPublicKey = initResult[1]
-  #   mixPrivKey = initResult[2]
-  #
-  #   #mix protocol uses same address as yamux
-  #   builder = builder.withRng(crypto.newRng())
-  #             .withPrivateKey(PrivateKey(scheme: Secp256k1, skkey: mixPrivKey))
-  # else:
   builder = builder.withRng(rng)
 
   case muxer.toLowerAscii()
@@ -478,16 +444,6 @@ proc main {.async.} =
   
   # Set peerId for metric labels
   gPeerId = $switch.peerInfo.peerId
-
-  # Mix protocol not available in this libp2p version
-  # if mountsMix or usesMix:
-  #   writeMixInfoFiles(switch, myId, mixPublicKey, filePath)
-  #   await sleepAsync(10.seconds)
-
-  # if mountsMix:
-  #   error "Mix not implemented"
-  #   return
-  # else:
   gossipSub = initializeGossipsub(switch, true)
 
   configureGossipsubParams(gossipSub)
