@@ -9,4 +9,4 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "libp2p"
+          "libp2p#d4cd68b91b82f34a0ede3766ab1ca8119d5015f8"
