@@ -10,7 +10,6 @@ proc buildSwitch*(muxer: string, listenAddress: string): Switch =
     .withNoise()
     .withRng(libp2p.newRng())
     .withAddresses(@[MultiAddress.init(listenAddress).tryGet()])
-    .withTcpTransport(flags = {ServerFlags.TcpNoDelay})
     .withMaxConnections(200)
 
   case muxer
