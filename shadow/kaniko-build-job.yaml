@@ -20,8 +20,8 @@
 # Clean up:
 #   kubectl -n zerotesting-shadow delete job shadow-image-build
 #
-# After it completes, radiken/dst-shadow-nim:latest will be on Docker Hub and
-# the runtime Job (k8s-job.yaml) can pull it.
+# After it completes, radiken/dst-shadow-base:latest will be on Docker Hub for the
+# 10ksim shadow-gossipsub runner Job to pull.
 apiVersion: batch/v1
 kind: Job
 metadata:
