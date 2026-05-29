@@ -29,9 +29,7 @@ RUN curl https://nim-lang.org/download/nim-2.2.6-linux_x64.tar.xz -o /tmp/nim.ta
     && ln -sf /usr/local/nim-2.2.6/bin/nim /usr/local/bin/nim \
     && ln -sf /usr/local/nim-2.2.6/bin/nimble /usr/local/bin/nimble
 
-# Build context is the repo root (so this Dockerfile can be shared between
-# images that need both nim-test-node/ and shadow/). Copy only what nim needs.
-COPY nim-test-node/ ./
+COPY . .
 
 RUN nimble refresh
 RUN nimble install -dy --verbose

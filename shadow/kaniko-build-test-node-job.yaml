@@ -23,14 +23,22 @@ spec:
         app: test-node-shadow-build
     spec:
       restartPolicy: Never
-      nodeSelector:
-        kubernetes.io/hostname: node-04.ih-eu-mda1.misc.vaclab
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - node-01.ih-eu-mda1.misc.vaclab
       containers:
         - name: kaniko
           image: gcr.io/kaniko-project/executor:v1.23.2
           args:
             - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/Alan/shadow-k8s"
-            - "--dockerfile=nim-test-node/Dockerfile_amd64_shadow"
+            - "--context-sub-path=nim-test-node"
+            - "--dockerfile=Dockerfile_amd64_shadow"
             - "--destination=radiken/dst-test-node-shadow:latest"
             - "--cache=true"
             - "--cache-repo=radiken/dst-test-node-shadow-cache"
