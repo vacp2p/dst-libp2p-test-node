@@ -121,7 +121,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
-proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
+proc initializeGossipsub(switch: Switch, anonymize: bool, rng: Rng): GossipSub =
   return GossipSub.init(
       switch = switch,
       triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
@@ -250,7 +250,7 @@ proc main {.async.} =
   let switch = builder.build()
 
 
-  gossipSub = initializeGossipsub(switch, true)
+  gossipSub = initializeGossipsub(switch, true, rng)
   configureGossipsubParams(gossipSub)
   subscribGossipsubTopic(gossipSub, "test")
   switch.mount(gossipSub)
