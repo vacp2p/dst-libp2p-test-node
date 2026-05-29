@@ -6,8 +6,7 @@ import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, m
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
-from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
-from times import getTime, toUnixFloat, `-`, initTime, `$`, inMilliseconds, Time
+from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
 
@@ -129,14 +128,7 @@ proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = anonymize,
-      customConnCallbacks = if mountsMix and mixProto.isSome:
-        #add custom connection and peer selection callbacks for mix
-        some(CustomConnectionCallbacks(
-          customConnCreationCB: makeMixConnCb(mixProto.get()),
-          customPeerSelectionCB: makeMixPeerSelectCb()
-        ))
-      else:
-        none(CustomConnectionCallbacks)
+      rng = rng,
       customStreamCallbacks = Opt.none(CustomStreamCallbacks)
     )
 
@@ -187,7 +179,7 @@ proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAdd
       await sleepAsync(15.seconds)
 
 proc connectGossipsubPeers(
-  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: ref HmacDrbgContext
+  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: auto
 ): Future[Result[int, string]] {.async.} =
   var
     addrs: seq[MultiAddress] = @[]
