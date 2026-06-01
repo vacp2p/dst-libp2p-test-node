@@ -3,22 +3,19 @@ import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
 let
-  mountsMix* = existsEnv("MOUNTSMIX")                           #Full mix-net peer
-  usesMix* = existsEnv("USESMIX")                               #Supports sending mix messages
-  mixCount* = parseInt(getEnv("NUMMIX", "0"))                   #Number of mix peers (mountsMix + usesMix)
   inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
   httpPublishPort* = Port(8645)
   prometheusPort* = Port(8008)
   myPort* = Port(5000)
   chunks* = parseInt(getEnv("FRAGMENTS", "1"))                  #No. of fragments for each message
-  mix_D* = parseInt(getEnv("MIXD", "4"))                        #No. of mix tunnels
-  metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
 proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] =
   let 
     hostname = getHostname()
-    myId = parseInt(hostname.split('-')[^1])
+    ordinal = parseInt(hostname.split('-')[^1])
+    peerIdOffset = parseInt(getEnv("PEER_ID_OFFSET", "0"))
+    myId = peerIdOffset + ordinal
     networkSize = parseInt(getEnv("PEERS", "100"))
     connectTo = parseInt(getEnv("CONNECTTO", "10"))
     muxer = getEnv("MUXER", "yamux")
@@ -34,7 +31,7 @@ proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] 
   if connectTo >= networkSize:
     return err("Not enough peers to make target connections. Network size : " & $networkSize)
   
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, mountsMix = mountsMix, usesMix = usesMix, mixCount = mixCount, inShadow = inShadow, address = address
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address
 
   return ok((myId, networkSize, connectTo, muxer, filePath, address))
 
@@ -73,4 +70,4 @@ proc storeMetrics*(myId: int) {.async.} =
     except CatchableError as e:
       info "Error storing metrics: ", error = e.msg
       return
-    await sleepAsync(metricsIntervalS.seconds)
+    await sleepAsync(5.minutes)

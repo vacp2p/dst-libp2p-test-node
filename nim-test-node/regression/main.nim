@@ -1,14 +1,12 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
-import mix_helpers, env
+import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
-import libp2p/protocols/[mix, mix/mix_protocol]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
-from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
-from times import getTime, toUnixFloat, `-`, initTime, `$`, inMilliseconds, Time
+from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
 
@@ -69,12 +67,7 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
     nowBytes[16] = byte(chunk)
-    res = if mountsMix:
-      await gossipSub.publish(topic, nowBytes,
-        publishParams = some(PublishParams(skipMCache: true, useCustomConn: true)),
-      )
-    else:
-      await gossipSub.publish(topic, nowBytes)
+    res = await gossipSub.publish(topic, nowBytes)
   return (now, res)
 
 #http endpoint for detached controller
@@ -128,21 +121,15 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
-proc initializeGossipsub(switch: Switch, anonymize: bool, mixProto: Option[MixProtocol] = none(MixProtocol)): GossipSub =
+proc initializeGossipsub(switch: Switch, anonymize: bool, rng: Rng): GossipSub =
   return GossipSub.init(
       switch = switch,
       triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = anonymize,
-      customConnCallbacks = if mountsMix and mixProto.isSome:
-        #add custom connection and peer selection callbacks for mix
-        some(CustomConnectionCallbacks(
-          customConnCreationCB: makeMixConnCb(mixProto.get()),
-          customPeerSelectionCB: makeMixPeerSelectCb()
-        ))
-      else:
-        none(CustomConnectionCallbacks)
+      rng = rng,
+      customStreamCallbacks = Opt.none(CustomStreamCallbacks)
     )
 
 proc configureGossipsubParams(gossipSub: GossipSub) =
@@ -192,7 +179,7 @@ proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAdd
       await sleepAsync(15.seconds)
 
 proc connectGossipsubPeers(
-  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: ref HmacDrbgContext
+  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: auto
 ): Future[Result[int, string]] {.async.} =
   var
     addrs: seq[MultiAddress] = @[]
@@ -244,27 +231,11 @@ proc main {.async.} =
       return
   var
     gossipSub: GossipSub
-    mixPublicKey: SkPublicKey
-    mixPrivKey: SkPrivateKey
     builder = SwitchBuilder
       .new()
       .withNoise()
       .withAddress(MultiAddress.init(address).tryGet())
       .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
-
-  if mountsMix or usesMix:
-    let initResult = initializeMix(myId).valueOr:
-      error "Failed to initialize mix", err = error
-      return
-    let multiAddr = initResult[0]
-    mixPublicKey = initResult[1]
-    mixPrivKey = initResult[2]
-
-    #mix protocol uses same address as yamux
-    builder = builder.withRng(crypto.newRng())
-              .withPrivateKey(PrivateKey(scheme: Secp256k1, skkey: mixPrivKey))
-  else:
-    builder = builder.withRng(rng)
 
   case muxer.toLowerAscii()
   of "quic":
@@ -278,16 +249,8 @@ proc main {.async.} =
 
   let switch = builder.build()
 
-  if mountsMix or usesMix:
-    writeMixInfoFiles(switch, myId, mixPublicKey, filePath)
-    await sleepAsync(10.seconds)
 
-  if mountsMix:
-    error "Mix not implemented"
-    return
-  else:
-    gossipSub = initializeGossipsub(switch, true)
-
+  gossipSub = initializeGossipsub(switch, true, rng)
   configureGossipsubParams(gossipSub)
   subscribGossipsubTopic(gossipSub, "test")
   switch.mount(gossipSub)
@@ -305,7 +268,7 @@ proc main {.async.} =
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
   #Wait for node building
   info "GossipSub codecs registered", codecs = gossipSub.codecs
-  await sleepAsync(60.seconds)
+  await sleepAsync(start_sleep.seconds)
 
   #connect with peers
   discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:

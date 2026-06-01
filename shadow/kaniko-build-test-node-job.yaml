@@ -37,7 +37,7 @@ spec:
           image: gcr.io/kaniko-project/executor:v1.23.2
           args:
             - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/Alan/shadow-k8s"
-            - "--context-sub-path=nim-test-node"
+            - "--context-sub-path=nim-test-node/regression"
             - "--dockerfile=Dockerfile_amd64_shadow"
             - "--destination=radiken/dst-test-node-shadow:latest"
             - "--cache=true"
