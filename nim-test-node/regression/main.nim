@@ -1,10 +1,9 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
-import mix_helpers, env
+import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
-import libp2p/protocols/[mix, mix/mix_protocol]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
@@ -69,12 +68,7 @@ proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Futur
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
   for chunk in 0..<chunks:
     nowBytes[16] = byte(chunk)
-    res = if mountsMix:
-      await gossipSub.publish(topic, nowBytes,
-        publishParams = some(PublishParams(skipMCache: true, useCustomConn: true)),
-      )
-    else:
-      await gossipSub.publish(topic, nowBytes)
+    res = await gossipSub.publish(topic, nowBytes)
   return (now, res)
 
 #http endpoint for detached controller
@@ -128,7 +122,7 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
-proc initializeGossipsub(switch: Switch, anonymize: bool, mixProto: Option[MixProtocol] = none(MixProtocol)): GossipSub =
+proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
   return GossipSub.init(
       switch = switch,
       triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
@@ -143,6 +137,7 @@ proc initializeGossipsub(switch: Switch, anonymize: bool, mixProto: Option[MixPr
         ))
       else:
         none(CustomConnectionCallbacks)
+      customStreamCallbacks = Opt.none(CustomStreamCallbacks)
     )
 
 proc configureGossipsubParams(gossipSub: GossipSub) =
@@ -244,27 +239,11 @@ proc main {.async.} =
       return
   var
     gossipSub: GossipSub
-    mixPublicKey: SkPublicKey
-    mixPrivKey: SkPrivateKey
     builder = SwitchBuilder
       .new()
       .withNoise()
       .withAddress(MultiAddress.init(address).tryGet())
       .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
-
-  if mountsMix or usesMix:
-    let initResult = initializeMix(myId).valueOr:
-      error "Failed to initialize mix", err = error
-      return
-    let multiAddr = initResult[0]
-    mixPublicKey = initResult[1]
-    mixPrivKey = initResult[2]
-
-    #mix protocol uses same address as yamux
-    builder = builder.withRng(crypto.newRng())
-              .withPrivateKey(PrivateKey(scheme: Secp256k1, skkey: mixPrivKey))
-  else:
-    builder = builder.withRng(rng)
 
   case muxer.toLowerAscii()
   of "quic":
@@ -278,16 +257,8 @@ proc main {.async.} =
 
   let switch = builder.build()
 
-  if mountsMix or usesMix:
-    writeMixInfoFiles(switch, myId, mixPublicKey, filePath)
-    await sleepAsync(10.seconds)
 
-  if mountsMix:
-    error "Mix not implemented"
-    return
-  else:
-    gossipSub = initializeGossipsub(switch, true)
-
+  gossipSub = initializeGossipsub(switch, true)
   configureGossipsubParams(gossipSub)
   subscribGossipsubTopic(gossipSub, "test")
   switch.mount(gossipSub)
