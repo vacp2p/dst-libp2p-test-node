@@ -6,8 +6,7 @@ import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, m
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
-from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
-from times import getTime, toUnixFloat, `-`, initTime, `$`, inMilliseconds, Time
+from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
 
@@ -122,21 +121,14 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   info "http server started ", httpPort = $httpPublishPort
   return server
 
-proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
+proc initializeGossipsub(switch: Switch, anonymize: bool, rng: Rng): GossipSub =
   return GossipSub.init(
       switch = switch,
       triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
       msgIdProvider = msgIdProvider,
       verifySignature = false,
       anonymize = anonymize,
-      customConnCallbacks = if mountsMix and mixProto.isSome:
-        #add custom connection and peer selection callbacks for mix
-        some(CustomConnectionCallbacks(
-          customConnCreationCB: makeMixConnCb(mixProto.get()),
-          customPeerSelectionCB: makeMixPeerSelectCb()
-        ))
-      else:
-        none(CustomConnectionCallbacks)
+      rng = rng,
       customStreamCallbacks = Opt.none(CustomStreamCallbacks)
     )
 
@@ -187,7 +179,7 @@ proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAdd
       await sleepAsync(15.seconds)
 
 proc connectGossipsubPeers(
-  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: ref HmacDrbgContext
+  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: auto
 ): Future[Result[int, string]] {.async.} =
   var
     addrs: seq[MultiAddress] = @[]
@@ -258,7 +250,7 @@ proc main {.async.} =
   let switch = builder.build()
 
 
-  gossipSub = initializeGossipsub(switch, true)
+  gossipSub = initializeGossipsub(switch, true, rng)
   configureGossipsubParams(gossipSub)
   subscribGossipsubTopic(gossipSub, "test")
   switch.mount(gossipSub)
@@ -276,7 +268,7 @@ proc main {.async.} =
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
   #Wait for node building
   info "GossipSub codecs registered", codecs = gossipSub.codecs
-  await sleepAsync(60.seconds)
+  await sleepAsync(start_sleep.seconds)
 
   #connect with peers
   discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:

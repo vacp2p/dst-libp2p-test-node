@@ -3,15 +3,12 @@ import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
 let
-  mountsMix* = existsEnv("MOUNTSMIX")                           #Full mix-net peer
-  usesMix* = existsEnv("USESMIX")                               #Supports sending mix messages
-  mixCount* = parseInt(getEnv("NUMMIX", "0"))                   #Number of mix peers (mountsMix + usesMix)
   inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
   httpPublishPort* = Port(8645)
   prometheusPort* = Port(8008)
   myPort* = Port(5000)
   chunks* = parseInt(getEnv("FRAGMENTS", "1"))                  #No. of fragments for each message
-  mix_D* = parseInt(getEnv("MIXD", "4"))                        #No. of mix tunnels
+  start_sleep* = parseInt(getEnv("STARTSLEEP", "180"))          # Give time to deploy all nodes before starting connections
 
 
 proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] =
@@ -33,7 +30,7 @@ proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] 
   if connectTo >= networkSize:
     return err("Not enough peers to make target connections. Network size : " & $networkSize)
   
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, mountsMix = mountsMix, usesMix = usesMix, mixCount = mixCount, inShadow = inShadow, address = address
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, start_sleep = start_sleep
 
   return ok((myId, networkSize, connectTo, muxer, filePath, address))
 
