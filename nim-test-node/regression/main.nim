@@ -268,7 +268,7 @@ proc main {.async.} =
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
   #Wait for node building
   info "GossipSub codecs registered", codecs = gossipSub.codecs
-  await sleepAsync(60.seconds)
+  await sleepAsync(start_sleep.seconds)
 
   #connect with peers
   discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
