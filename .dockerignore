@@ -1,0 +1,19 @@
+# Repo-root .dockerignore — used by `docker buildx build -f shadow/Dockerfile .`
+# Existing per-experiment builds (e.g. nim-test-node/connmanager/) have their own
+# .dockerignore and are unaffected.
+
+.git
+.gitignore
+LICENSE
+README.md
+
+# Sibling test-node implementations not consumed by the Shadow build.
+go-test-node
+rust-test-node
+
+# Local nim build artifacts that should never enter the image.
+**/config.nims
+**/nimble.paths
+**/nimble.develop
+**/nimbledeps
+**/main

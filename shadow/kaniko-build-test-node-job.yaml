@@ -1,0 +1,63 @@
+# Kaniko build Job for the dynamic-linked nim test-node image.
+# Pushes to radiken/dst-test-node-shadow:latest.
+#
+# Apply:
+#   kubectl apply -f shadow/kaniko-build-test-node-job.yaml
+# Wait:
+#   kubectl -n zerotesting-shadow wait --for=condition=Complete \
+#     --for=condition=Failed --timeout=900s job/test-node-shadow-build
+#
+# Same prereqs as shadow/kaniko-build-job.yaml (branch pushed to origin,
+# dockerhub-creds secret in this namespace).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-node-shadow-build
+  namespace: zerotesting-shadow
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: test-node-shadow-build
+    spec:
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - node-01.ih-eu-mda1.misc.vaclab
+      containers:
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:v1.23.2
+          args:
+            - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/Alan/shadow-k8s"
+            - "--context-sub-path=nim-test-node/regression"
+            - "--dockerfile=Dockerfile_amd64_shadow"
+            - "--destination=radiken/dst-test-node-shadow:latest"
+            - "--cache=true"
+            - "--cache-repo=radiken/dst-test-node-shadow-cache"
+            - "--snapshot-mode=redo"
+            - "--use-new-run"
+          volumeMounts:
+            - name: docker-config
+              mountPath: /kaniko/.docker
+          resources:
+            requests:
+              cpu: "8"
+              memory: "8Gi"
+            limits:
+              cpu: "32"
+              memory: "16Gi"
+      volumes:
+        - name: docker-config
+          secret:
+            secretName: dockerhub-creds
+            items:
+              - key: .dockerconfigjson
+                path: config.json

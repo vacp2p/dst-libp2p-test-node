@@ -9,6 +9,7 @@ let
   myPort* = Port(5000)
   chunks* = parseInt(getEnv("FRAGMENTS", "1"))                  #No. of fragments for each message
   start_sleep* = parseInt(getEnv("STARTSLEEP", "180"))          # Give time to deploy all nodes before starting connections
+  metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
 proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] =
@@ -69,4 +70,4 @@ proc storeMetrics*(myId: int) {.async.} =
     except CatchableError as e:
       info "Error storing metrics: ", error = e.msg
       return
-    await sleepAsync(5.minutes)
+    await sleepAsync(metricsIntervalS.seconds)
