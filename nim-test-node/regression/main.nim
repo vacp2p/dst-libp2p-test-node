@@ -1,6 +1,5 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
-import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
@@ -9,6 +8,8 @@ import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
+import env
+import ping_utils
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -254,6 +255,8 @@ proc main {.async.} =
   configureGossipsubParams(gossipSub)
   subscribGossipsubTopic(gossipSub, "test")
   switch.mount(gossipSub)
+  let pingProtocol = Ping.new(rng = rng)
+  switch.mount(pingProtocol)
   await switch.start()
 
   # Metrics
@@ -278,6 +281,9 @@ proc main {.async.} =
   await sleepAsync(5.seconds)
   info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,
     peersConnected = gossipSub.gossipsub.getOrDefault("test").len
+
+  # Periodic mesh-only pings
+  asyncSpawn pingMeshLoop(switch, pingProtocol, gossipSub, "test")
 
   info "Starting listening endpoint for publish controller"
   discard gossipSub.startHttpServer(myId)
