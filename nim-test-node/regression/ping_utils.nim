@@ -58,7 +58,7 @@ proc pingMeshPeer*(switch: Switch, pingProtocol: Ping, peerId: PeerId) {.async.}
       let closeStart = Moment.now()
       try:
         # Make close observable: if it never completes, you'll never see "slow close" today.
-        await stream.close().wait(MeshCloseTimeout)
+        await stream.closeWithEOF().wait(MeshCloseTimeout)
       except CancelledError as exc:
         raise exc
       except CatchableError as exc:
