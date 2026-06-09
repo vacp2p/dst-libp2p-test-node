@@ -24,6 +24,28 @@ type
     ipSimCoefficient*: float64
     advertExpiry*: Duration
     xprPublishing*: bool
+    maxConnections*: int
+
+proc `$`(c: NodeConfig): string =
+  "NodeConfig(" &
+    "role=" & $c.role &
+    ", nodeIndex=" & $c.nodeIndex &
+    ", muxer=" & c.muxer &
+    ", listenAddress=" & c.listenAddress &
+    ", bootstrapService=" & c.bootstrapService &
+    ", advertiseServices=" & $c.advertiseServices &
+    ", discoverServices=" & $c.discoverServices &
+    ", listenPort=" & $c.listenPort &
+    ", healthPort=" & $c.healthPort &
+    ", lookupInterval=" & $c.lookupInterval &
+    ", startupJitterMs=" & $c.startupJitterMs &
+    ", safetyParam=" & $c.safetyParam &
+    ", ipSimCoefficient=" & $c.ipSimCoefficient &
+    ", advertExpiry=" & $c.advertExpiry &
+    ", xprPublishing=" & $c.xprPublishing &
+    ", maxConnections=" & $c.maxConnections &
+  ")"
+
 
 proc parseIntEnv(name: string, defaultValue: string): Result[int, string] =
   let raw = getEnv(name, defaultValue)
@@ -155,13 +177,6 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     maxConnections: maxConnections
   )
 
-  info "Node config loaded",
-    role = cfg.role,
-    nodeIndex = cfg.nodeIndex,
-    muxer = cfg.muxer,
-    listenAddress = cfg.listenAddress,
-    advertiseServices = cfg.advertiseServices,
-    discoverServices = cfg.discoverServices,
-    bootstrapService = cfg.bootstrapService
+  info "Node config loaded", cfg = $cfg
 
   ok(cfg)
