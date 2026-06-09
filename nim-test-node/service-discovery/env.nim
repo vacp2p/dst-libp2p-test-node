@@ -109,7 +109,7 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
       parseIntEnv("STARTUP_JITTER_MS", "0").valueOr:
         return err(error)
     else:
-      let step = parseIntEnv("STARTUP_JITTER_STEP_MS", "200").valueOr:
+      let step = parseIntEnv("STARTUP_JITTER_STEP_MS", "10").valueOr:
         return err(error)
       nodeIndex * step
 
