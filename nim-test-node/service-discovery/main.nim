@@ -20,9 +20,9 @@ proc main() {.async.} =
 
   var bootstrapNodes: seq[(PeerId, seq[MultiAddress])] = @[]
   if cfg.role != RoleBootstrap:
-    if cfg.startupJitterMs > 0:
-      notice "Applying startup jitter", delayMs = cfg.startupJitterMs
-      await sleepAsync(cfg.startupJitterMs.milliseconds)
+    # if cfg.startupJitterMs > 0:
+    #   notice "Applying startup jitter", delayMs = cfg.startupJitterMs
+    #   await sleepAsync(cfg.startupJitterMs.milliseconds)
 
     let connectedBootstraps = await connectToBootstraps(
       switch,
