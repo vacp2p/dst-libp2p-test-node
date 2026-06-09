@@ -2,6 +2,7 @@ import chronos, chronicles
 import std/sequtils
 import libp2p, libp2p/[multiaddress]
 import libp2p/extended_peer_record
+import libp2p/protocols/kademlia
 import env, helpers, core
 
 proc main() {.async.} =
@@ -10,44 +11,36 @@ proc main() {.async.} =
     quit(1)
 
   var switch = buildSwitch(cfg.muxer, cfg.maxConnections, cfg.listenAddress)
+
+  let disco = mountServiceDiscovery(
+    switch, cfg.safetyParam, cfg.ipSimCoefficient, cfg.advertExpiry, cfg.xprPublishing
+  )
+
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
   notice "Service discovery node started",
-    peerId = $selfId,
-    role = cfg.role,
-    listen = cfg.listenAddress
+    peerId = $selfId, role = cfg.role, listen = cfg.listenAddress
 
-  var bootstrapNodes: seq[(PeerId, seq[MultiAddress])] = @[]
   if cfg.role != RoleBootstrap:
     if cfg.startupJitterMs > 0:
       notice "Applying startup jitter", delayMs = cfg.startupJitterMs
       await sleepAsync(cfg.startupJitterMs.milliseconds)
 
-    let connectedBootstraps = await connectToBootstraps(
-      switch,
-      cfg.muxer,
-      cfg.bootstrapService,
-      cfg.listenPort,
-    )
-    bootstrapNodes = connectedBootstraps.valueOr:
-      error "Failed to connect to bootstrap nodes", service = cfg.bootstrapService, error
+    let connectedBootstraps =
+      await connectToBootstraps(switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort)
+    let bootstrapNodes = connectedBootstraps.valueOr:
+      error "Failed to connect to bootstrap nodes",
+        service = cfg.bootstrapService, error
       quit(1)
 
-  let disco = await mountServiceDiscovery(
-    switch,
-    bootstrapNodes,
-    cfg.safetyParam,
-    cfg.ipSimCoefficient,
-    cfg.advertExpiry,
-    cfg.xprPublishing,
-  )
+    disco.updatePeers(bootstrapNodes)
+    await disco.bootstrap(forceRefresh = true)
 
   discard await startHealthServer(cfg.healthPort)
 
-  let advertisedServices = cfg.advertiseServices.mapIt(
-    ServiceInfo(id: it, data: cfg.serviceData)
-  )
+  let advertisedServices =
+    cfg.advertiseServices.mapIt(ServiceInfo(id: it, data: cfg.serviceData))
 
   case cfg.role
   of RoleBootstrap:
