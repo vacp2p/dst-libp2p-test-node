@@ -124,8 +124,11 @@ proc mountServiceDiscovery*(
     xprPublishing = xprPublishing,
   )
 
+  info "Starting service discovery"
   await disco.start()
+  info "Mouting service discovery"
   switch.mount(disco)
+  info "Service discovery mounted"
   disco
 
 proc startHealthServer*(port: Port): Future[HttpServerRef] {.async.} =
