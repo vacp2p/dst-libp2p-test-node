@@ -9,7 +9,7 @@ proc main() {.async.} =
     error "Invalid node configuration", error
     quit(1)
 
-  var switch = buildSwitch(cfg.muxer, cfg.listenAddress)
+  var switch = buildSwitch(cfg.muxer, cfg.maxConnections, cfg.listenAddress)
   await switch.start()
 
   let selfId = switch.peerInfo.peerId

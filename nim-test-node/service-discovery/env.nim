@@ -126,6 +126,9 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
   if role in [RoleDiscoverer, RoleHybrid] and discoverServices.len == 0:
     return err("DISCOVER_SERVICES is required for " & $role)
 
+  let maxConnections = parseIntEnv("MAXCONNECTIONS", "200").valueOr:
+    return err(error)
+
   let listenAddress =
     if muxer == "quic":
       "/ip4/0.0.0.0/udp/" & $listenPort & "/quic-v1"
@@ -149,6 +152,7 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     ipSimCoefficient: ipSimCoefficient,
     advertExpiry: advertExpirySeconds.seconds,
     xprPublishing: xprPublishing,
+    maxConnections: maxConnections
   )
 
   info "Node config loaded",

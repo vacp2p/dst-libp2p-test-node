@@ -4,13 +4,13 @@ import chronicles
 import libp2p, libp2p/[multiaddress]
 import libp2p/protocols/[kademlia, service_discovery]
 
-proc buildSwitch*(muxer: string, listenAddress: string): Switch =
+proc buildSwitch*(muxer: string, max_connections: int, listenAddress: string): Switch =
   var builder = SwitchBuilder
     .new()
     .withNoise()
     .withRng(libp2p.newRng())
     .withAddresses(@[MultiAddress.init(listenAddress).tryGet()])
-    .withMaxConnections(200)
+    .withMaxConnections(max_connections)
 
   case muxer
   of "quic":
