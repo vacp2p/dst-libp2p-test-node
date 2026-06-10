@@ -2,7 +2,7 @@
 # and pushes the resulting image to Docker Hub.
 #
 # Prereqs:
-#   1. The branch (alan/shadow-k8s) must be pushed to origin so kaniko can clone it.
+#   1. Builds from master (kaniko clones it below) — no feature branch to push.
 #   2. A docker-registry Secret called `dockerhub-creds` must exist in this namespace:
 #        kubectl create secret docker-registry dockerhub-creds \
 #          --docker-server=https://index.docker.io/v1/ \
@@ -46,7 +46,7 @@ spec:
           # Pinned digest to avoid surprises; bump deliberately.
           image: gcr.io/kaniko-project/executor:v1.23.2
           args:
-            - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/Alan/shadow-k8s"
+            - "--context=git://github.com/vacp2p/dst-libp2p-test-node.git#refs/heads/master"
             - "--dockerfile=shadow/Dockerfile"
             - "--destination=radiken/dst-shadow-base:latest"
             # Speed knobs: cache base layers in-cluster to make subsequent
