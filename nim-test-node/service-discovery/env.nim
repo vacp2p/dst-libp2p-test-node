@@ -24,6 +24,30 @@ type
     ipSimCoefficient*: float64
     advertExpiry*: Duration
     xprPublishing*: bool
+    maxConnections*: int
+    maxBootstraps*: int
+
+proc `$`(c: NodeConfig): string =
+  "NodeConfig(" &
+    "role=" & $c.role &
+    ", nodeIndex=" & $c.nodeIndex &
+    ", muxer=" & c.muxer &
+    ", listenAddress=" & c.listenAddress &
+    ", bootstrapService=" & c.bootstrapService &
+    ", advertiseServices=" & $c.advertiseServices &
+    ", discoverServices=" & $c.discoverServices &
+    ", listenPort=" & $c.listenPort &
+    ", healthPort=" & $c.healthPort &
+    ", lookupInterval=" & $c.lookupInterval &
+    ", startupJitterMs=" & $c.startupJitterMs &
+    ", safetyParam=" & $c.safetyParam &
+    ", ipSimCoefficient=" & $c.ipSimCoefficient &
+    ", advertExpiry=" & $c.advertExpiry &
+    ", xprPublishing=" & $c.xprPublishing &
+    ", maxConnections=" & $c.maxConnections &
+    ", maxBootstraps=" & $c.maxBootstraps &
+  ")"
+
 
 proc parseIntEnv(name: string, defaultValue: string): Result[int, string] =
   let raw = getEnv(name, defaultValue)
@@ -87,7 +111,7 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
       parseIntEnv("STARTUP_JITTER_MS", "0").valueOr:
         return err(error)
     else:
-      let step = parseIntEnv("STARTUP_JITTER_STEP_MS", "200").valueOr:
+      let step = parseIntEnv("STARTUP_JITTER_STEP_MS", "10").valueOr:
         return err(error)
       nodeIndex * step
 
@@ -126,6 +150,12 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
   if role in [RoleDiscoverer, RoleHybrid] and discoverServices.len == 0:
     return err("DISCOVER_SERVICES is required for " & $role)
 
+  let maxConnections = parseIntEnv("MAXCONNECTIONS", "200").valueOr:
+    return err(error)
+
+  let maxBootstraps = parseIntEnv("MAXBOOTSTRAPS", "1").valueOr:
+    return err(error)
+
   let listenAddress =
     if muxer == "quic":
       "/ip4/0.0.0.0/udp/" & $listenPort & "/quic-v1"
@@ -149,15 +179,10 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     ipSimCoefficient: ipSimCoefficient,
     advertExpiry: advertExpirySeconds.seconds,
     xprPublishing: xprPublishing,
+    maxConnections: maxConnections,
+    maxBootstraps: maxBootstraps
   )
 
-  info "Node config loaded",
-    role = cfg.role,
-    nodeIndex = cfg.nodeIndex,
-    muxer = cfg.muxer,
-    listenAddress = cfg.listenAddress,
-    advertiseServices = cfg.advertiseServices,
-    discoverServices = cfg.discoverServices,
-    bootstrapService = cfg.bootstrapService
+  info "Node config loaded", cfg = $cfg
 
   ok(cfg)
