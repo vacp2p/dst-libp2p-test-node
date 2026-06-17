@@ -7,6 +7,6 @@ description   = "A test node for libp2p service discovery"
 license       = "MIT"
 skipDirs      = @[]
 
-requires "nim >= 2.2.0",
+requires "nim >= 2.2.4",
           "nimcrypto 0.6.4",
           "https://github.com/vacp2p/nim-libp2p#26e181e4dd65188051ab4783bcc538ed9579644f" # 2.0.0
