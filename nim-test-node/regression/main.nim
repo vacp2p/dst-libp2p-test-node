@@ -296,7 +296,6 @@ proc main {.async.} =
       return
     let kad = await mountKadDht(switch, rng, bootstraps)
     await kadWarmup(kad)
-    asyncSpawn kadRefreshLoop(kad)
     info "kad-dht discovery active", bootstraps = bootstraps.len
   else:
     discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:

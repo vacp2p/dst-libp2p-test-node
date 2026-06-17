@@ -19,7 +19,8 @@ let
 proc getPeerDetails*(): Result[(int, int, int, string, string, string, NodeType, string), string] =
   let
     hostname = getHostname()
-    myId = parseInt(hostname.split('-')[^1])
+    myId = try: parseInt(hostname.split('-')[^1])
+           except ValueError: 0
     networkSize = parseInt(getEnv("PEERS", "100"))
     connectTo = parseInt(getEnv("CONNECTTO", "10"))
     muxer = getEnv("MUXER", "yamux")

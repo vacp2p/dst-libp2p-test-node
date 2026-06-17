@@ -11,9 +11,8 @@ import env
 # its mesh from the peers the DHT connected us to.
 
 const
-  KadWarmupRounds = 3            # extra FIND_NODE rounds after the initial bootstrap
+  KadWarmupRounds = 3
   KadWarmupSleep  = 2.seconds
-  KadRefreshInterval = 60.seconds  # steady-state table refresh (also keeps links warm)
   BootstrapDialTimeout = 10.seconds
 
 proc resolveBootstrapAddrs(
@@ -66,6 +65,8 @@ proc connectToBootstrap*(
         notice "Connected to bootstrap", address = address, peerId = peerId
         bootstraps.add((peerId, @[address]))
         break
+      except CancelledError as exc:
+        raise exc
       except CatchableError as exc:
         lastErr = exc.msg
         warn "Failed to connect to bootstrap, retrying",
@@ -82,10 +83,8 @@ proc connectToBootstrap*(
 proc mountKadDht*(
     switch: Switch, rng: Rng, bootstraps: seq[(PeerId, seq[MultiAddress])]
 ): Future[KadDHT] {.async.} =
-  ## Build the DHT seeded with the bootstrap nodes, start it (which performs the
-  ## initial table bootstrap), then mount so we answer incoming queries. The
-  ## switch is already running, so the protocol must be started before mounting
-  ## (Switch.mount raises "Protocol not started" otherwise).
+  ## Start before mounting: the switch is already running, and Switch.mount
+  ## rejects a not-yet-started protocol.
   let kad = KadDHT.new(switch, bootstrapNodes = bootstraps, rng = rng)
   await kad.start()
   switch.mount(kad)
@@ -103,15 +102,3 @@ proc kadWarmup*(kad: KadDHT, rounds = KadWarmupRounds) {.async.} =
       warn "kad warmup round failed", round = i, error = exc.msg
     info "kad warmup round done", round = i
     await sleepAsync(KadWarmupSleep)
-
-proc kadRefreshLoop*(kad: KadDHT, interval = KadRefreshInterval) {.async.} =
-  ## Steady-state table refresh. Keeps the routing table current and the
-  ## bootstrap/mesh links warm during the deployment phase.
-  while true:
-    await sleepAsync(interval)
-    try:
-      await kad.bootstrap(forceRefresh = false)
-    except CancelledError as exc:
-      raise exc
-    except CatchableError as exc:
-      warn "kad refresh failed", error = exc.msg
