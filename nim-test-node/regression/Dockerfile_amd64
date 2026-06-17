@@ -2,7 +2,7 @@ FROM debian:bookworm-slim AS builder
 
 WORKDIR /node
 
-COPY .. .
+COPY . .
 
 RUN apt-get update && apt-get install -y \
     curl git build-essential ca-certificates \

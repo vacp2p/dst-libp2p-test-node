@@ -10,6 +10,7 @@ from nativesockets import getHostname
 
 import env
 import ping_utils
+import kad_utils
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -227,9 +228,10 @@ proc main {.async.} =
   randomize()
   let
     rng = libp2p.newRng()
-    (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
-      error "Error reading peer settings ",  err = error
-      return
+    (myId, networkSize, connectTo, muxer, filePath, address, nodeRole, discovery) =
+      getPeerDetails().valueOr:
+        error "Error reading peer settings ",  err = error
+        return
   var
     gossipSub: GossipSub
     builder = SwitchBuilder
@@ -250,6 +252,19 @@ proc main {.async.} =
 
   let switch = builder.build()
 
+  # Bootstrap node: a kad-dht anchor only. No GossipSub, no publishing - it just
+  # answers DHT queries so the normal nodes can discover each other through it.
+  if nodeRole == RoleBootstrap:
+    await switch.start()
+    info "Starting metrics server"
+    let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
+    if metricsServer.isErr:
+      error "Failed to initialize metrics server", err = metricsServer.error
+    discard await mountKadDht(switch, rng, @[])
+    info "Bootstrap node ready (kad-dht anchor)",
+      peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
+    await sleepAsync(2.days)
+    return
 
   gossipSub = initializeGossipsub(switch, true, rng)
   configureGossipsubParams(gossipSub)
@@ -273,10 +288,20 @@ proc main {.async.} =
   info "GossipSub codecs registered", codecs = gossipSub.codecs
   await sleepAsync(start_sleep.seconds)
 
-  #connect with peers
-  discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
-    error "Failed to establish any connections", error = error
-    return
+  # Form the GossipSub mesh: kad-dht discovery, or the legacy static dial.
+  if discovery == "kad-dht":
+    let service = getEnv("SERVICE", "bootstrap")
+    let bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
+      error "Failed to connect to bootstrap", service = service, error = error
+      return
+    let kad = await mountKadDht(switch, rng, bootstraps)
+    await kadWarmup(kad)
+    asyncSpawn kadRefreshLoop(kad)
+    info "kad-dht discovery active", bootstraps = bootstraps.len
+  else:
+    discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
+      error "Failed to establish any connections", error = error
+      return
 
   await sleepAsync(5.seconds)
   info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,
