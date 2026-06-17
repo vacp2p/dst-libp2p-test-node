@@ -28,7 +28,7 @@ proc main() {.async.} =
       await sleepAsync(cfg.startupJitterMs.milliseconds)
 
     let connectedBootstraps =
-      await connectToBootstraps(switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.bootstrapConnections)
+      await connectToBootstraps(switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps)
     let bootstrapNodes = connectedBootstraps.valueOr:
       error "Failed to connect to bootstrap nodes",
         service = cfg.bootstrapService, error
