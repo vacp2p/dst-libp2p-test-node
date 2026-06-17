@@ -25,6 +25,7 @@ type
     advertExpiry*: Duration
     xprPublishing*: bool
     maxConnections*: int
+    maxBootstraps*: int
 
 proc `$`(c: NodeConfig): string =
   "NodeConfig(" &
@@ -44,6 +45,7 @@ proc `$`(c: NodeConfig): string =
     ", advertExpiry=" & $c.advertExpiry &
     ", xprPublishing=" & $c.xprPublishing &
     ", maxConnections=" & $c.maxConnections &
+    ", maxBootstraps=" & $c.maxBootstraps &
   ")"
 
 
@@ -151,6 +153,9 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
   let maxConnections = parseIntEnv("MAXCONNECTIONS", "200").valueOr:
     return err(error)
 
+  let maxBootstraps = parseIntEnv("MAXBOOTSTRAPS", "1").valueOr:
+    return err(error)
+
   let listenAddress =
     if muxer == "quic":
       "/ip4/0.0.0.0/udp/" & $listenPort & "/quic-v1"
@@ -174,7 +179,8 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     ipSimCoefficient: ipSimCoefficient,
     advertExpiry: advertExpirySeconds.seconds,
     xprPublishing: xprPublishing,
-    maxConnections: maxConnections
+    maxConnections: maxConnections,
+    maxBootstraps: maxBootstraps
   )
 
   info "Node config loaded", cfg = $cfg

@@ -63,8 +63,15 @@ proc resolveService*(
   ok(addrs)
 
 proc connectToBootstraps*(
-    switch: Switch, muxer: string, service: string, defaultPort: Port
+    switch: Switch,
+    muxer: string,
+    service: string,
+    defaultPort: Port,
+    maxConnections: int
 ): Future[Result[seq[(PeerId, seq[MultiAddress])], string]] {.async.} =
+  if maxConnections <= 0:
+    return err("maxConnections must be greater than 0")
+
   let addrsRes = await resolveService(muxer, service, defaultPort)
   let addrs = addrsRes.valueOr:
     return err("Failed to resolve bootstrap service '" & service & "': " & error)
@@ -73,6 +80,9 @@ proc connectToBootstraps*(
   var lastErr = ""
 
   for addr in addrs:
+    if bootstraps.len >= maxConnections:
+      break
+
     var backoff = 1.seconds
     for attempt in 1 .. 10:
       try:
