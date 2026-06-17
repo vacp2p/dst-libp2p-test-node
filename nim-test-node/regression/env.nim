@@ -2,6 +2,10 @@ import strutils, os, osproc
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
+type
+  NodeType* = enum
+    RoleBootstrap, RoleNormal
+
 let
   inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
   httpPublishPort* = Port(8645)
@@ -12,8 +16,8 @@ let
   metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
-proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] =
-  let 
+proc getPeerDetails*(): Result[(int, int, int, string, string, string, NodeType, string), string] =
+  let
     hostname = getHostname()
     myId = parseInt(hostname.split('-')[^1])
     networkSize = parseInt(getEnv("PEERS", "100"))
@@ -24,16 +28,20 @@ proc getPeerDetails*(): Result[(int, int, int, string, string, string), string] 
       "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
     else:
       "/ip4/0.0.0.0/tcp/" & $myPort
-  
+    # RoleNormal + static discovery keep the legacy behaviour when the env is unset.
+    nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
+    discovery = getEnv("DISCOVERY", "static")
+
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
     return err("Unknown muxer type : " & muxer)
 
-  if connectTo >= networkSize:
+  # connectTo only constrains the static mesh; kad-dht discovers peers dynamically.
+  if discovery != "kad-dht" and connectTo >= networkSize:
     return err("Not enough peers to make target connections. Network size : " & $networkSize)
-  
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, start_sleep = start_sleep
 
-  return ok((myId, networkSize, connectTo, muxer, filePath, address))
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, start_sleep = start_sleep, role = nodeRole, discovery = discovery
+
+  return ok((myId, networkSize, connectTo, muxer, filePath, address, nodeRole, discovery))
 
 #Prometheus metrics
 proc startMetricsServer*(
