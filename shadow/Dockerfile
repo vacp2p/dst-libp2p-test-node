@@ -1,6 +1,7 @@
-# Generic Shadow runner image.
+# Shadow runner image.
 #
-# Ubuntu 22.04 + Shadow built from source + python deps + nothing else.
+# Ubuntu 22.04 + Shadow built from source + the pod-api-requester (the in-Shadow
+# traffic publisher, run by the `publisher` host in batch mode).
 # No nim test-node binary baked in: per-experiment dynamic test-node images
 # (built from nim-test-node/Dockerfile_amd64_shadow) ship the `main` binary
 # separately. A Job spec uses an init container to copy `main` from the
@@ -19,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake findutils libclang-dev libc-dbg \
     libglib2.0-0 libglib2.0-dev make netbase \
-    python3 python3-networkx python3-yaml python3-requests xz-utils util-linux \
+    python3 python3-pip python3-networkx python3-yaml python3-requests xz-utils util-linux \
     gcc g++ git ca-certificates curl gawk \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -40,6 +41,16 @@ RUN git clone --depth 1 --branch ${SHADOW_REF} https://github.com/shadow/shadow.
     && ./setup build --jobs $(nproc) \
     && ./setup install \
     && rm -rf /tmp/shadow
+
+# Bake the pod-api-requester so the Shadow `publisher` host can run it in batch
+# mode (`python3 /app/api_requester.py --mode batch --config <mounted>/publisher.yaml`).
+# Pinned to a merged commit; bump REQUESTER_REF deliberately.
+ARG REQUESTER_REF=e54dbfd19b95bf7d445ba9ce04931d5939591815
+RUN git clone https://github.com/vacp2p/pod-api-requester.git /app \
+    && git -C /app checkout ${REQUESTER_REF} \
+    && rm -rf /app/.git \
+    && pip3 install --no-cache-dir --upgrade pip \
+    && pip3 install --no-cache-dir -r /app/requirements.txt
 
 # Default working directory for sims; the Job mounts the test-node binary and
 # the shadow.yaml here at runtime.
