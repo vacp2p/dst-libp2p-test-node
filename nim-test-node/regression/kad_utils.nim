@@ -11,8 +11,6 @@ import env
 # its mesh from the peers the DHT connected us to.
 
 const
-  KadWarmupRounds = 3
-  KadWarmupSleep  = 2.seconds
   BootstrapDialTimeout = 10.seconds
 
 proc resolveBootstrapAddrs(
@@ -80,25 +78,9 @@ proc connectToBootstrap*(
     )
   ok(bootstraps)
 
-proc mountKadDht*(
-    switch: Switch, rng: Rng, bootstraps: seq[(PeerId, seq[MultiAddress])]
-): Future[KadDHT] {.async.} =
-  ## Start before mounting: the switch is already running, and Switch.mount
-  ## rejects a not-yet-started protocol.
-  let kad = KadDHT.new(switch, bootstrapNodes = bootstraps, rng = rng)
-  await kad.start()
+proc mountKadDht*(switch: Switch, rng: Rng): KadDHT =
+  ## Mount kad-dht *before* the switch starts; the switch then starts the protocol
+  ## (no manual start). Bootstrap peers are seeded later via updatePeers once dialed.
+  let kad = KadDHT.new(switch, rng = rng)
   switch.mount(kad)
-  return kad
-
-proc kadWarmup*(kad: KadDHT, rounds = KadWarmupRounds) {.async.} =
-  ## A few extra refresh rounds widen the set of discovered/connected peers so
-  ## GossipSub has enough candidates to fill its mesh (dHigh).
-  for i in 1 .. rounds:
-    try:
-      await kad.bootstrap(forceRefresh = true)
-    except CancelledError as exc:
-      raise exc
-    except CatchableError as exc:
-      warn "kad warmup round failed", round = i, error = exc.msg
-    info "kad warmup round done", round = i
-    await sleepAsync(KadWarmupSleep)
+  kad

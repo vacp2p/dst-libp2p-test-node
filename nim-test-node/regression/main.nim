@@ -3,6 +3,7 @@ import chronos, chronos/apps/http/httpserver
 import std/[random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
+import libp2p/protocols/kademlia
 
 import math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
@@ -187,8 +188,9 @@ proc main {.async.} =
 
   let switch = builder.build()
 
-  # Normal nodes run GossipSub; the bootstrap is a kad-dht anchor only (it just
-  # answers DHT queries so normal nodes can discover each other through it).
+  # Mount protocols *before* starting the switch (switch.start() starts them, so no
+  # protocol is started manually): GossipSub + ping on normal nodes, kad-dht on all.
+  # The bootstrap is a kad-dht anchor only - it just answers DHT queries.
   var pingProtocol: Ping
   if nodeRole == RoleNormal:
     gossipSub = initializeGossipsub(switch, true, rng)
@@ -197,6 +199,7 @@ proc main {.async.} =
     switch.mount(gossipSub)
     pingProtocol = Ping.new(rng = rng)
     switch.mount(pingProtocol)
+  let kad = mountKadDht(switch, rng)
 
   await switch.start()
 
@@ -210,24 +213,21 @@ proc main {.async.} =
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
 
-  # Seed and mount kad-dht: the anchor starts empty; normal nodes dial the bootstrap
-  # first (after a delay so the whole network is up before discovery starts).
-  var bootstraps: seq[(PeerId, seq[MultiAddress])] = @[]
-  if nodeRole == RoleNormal:
-    await sleepAsync(start_sleep.seconds)
-    let service = getEnv("SERVICE", "bootstrap")
-    bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
-      error "Failed to connect to bootstrap", service = service, error = error
-      return
-  let kad = await mountKadDht(switch, rng, bootstraps)
-
   if nodeRole == RoleBootstrap:
     info "Bootstrap node ready (kad-dht anchor)",
       peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
     await sleepAsync(2.days)
     return
 
-  await kadWarmup(kad)
+  # Normal node: dial the bootstrap (after a delay so the network is up), seed its
+  # peers into the routing table, and do one bootstrap round to populate it.
+  await sleepAsync(start_sleep.seconds)
+  let service = getEnv("SERVICE", "bootstrap")
+  let bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
+    error "Failed to connect to bootstrap", service = service, error = error
+    return
+  kad.updatePeers(bootstraps)
+  await kad.bootstrap(forceRefresh = true)
   info "kad-dht discovery active", bootstraps = bootstraps.len
 
   await sleepAsync(5.seconds)
