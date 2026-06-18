@@ -16,33 +16,25 @@ let
   metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
-proc getPeerDetails*(): Result[(int, int, int, string, string, string, NodeType, string), string] =
+proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] =
   let
     hostname = getHostname()
     myId = try: parseInt(hostname.split('-')[^1])
            except ValueError: 0
-    networkSize = parseInt(getEnv("PEERS", "100"))
-    connectTo = parseInt(getEnv("CONNECTTO", "10"))
     muxer = getEnv("MUXER", "yamux")
     filePath = if inShadow: "../" else: getEnv("FILEPATH", "./")
     address = if muxer.toLowerAscii() == "quic":
       "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
     else:
       "/ip4/0.0.0.0/tcp/" & $myPort
-    # RoleNormal + static discovery keep the legacy behaviour when the env is unset.
     nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
-    discovery = getEnv("DISCOVERY", "static")
 
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
     return err("Unknown muxer type : " & muxer)
 
-  # connectTo only constrains the static mesh; kad-dht discovers peers dynamically.
-  if discovery != "kad-dht" and connectTo >= networkSize:
-    return err("Not enough peers to make target connections. Network size : " & $networkSize)
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, start_sleep = start_sleep, role = nodeRole
 
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, start_sleep = start_sleep, role = nodeRole, discovery = discovery
-
-  return ok((myId, networkSize, connectTo, muxer, filePath, address, nodeRole, discovery))
+  return ok((myId, muxer, filePath, address, nodeRole))
 
 #Prometheus metrics
 proc startMetricsServer*(
