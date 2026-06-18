@@ -3,7 +3,6 @@ import chronos, chronos/apps/http/httpserver
 import std/[random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
-import libp2p/protocols/kademlia
 
 import math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
@@ -226,8 +225,7 @@ proc main {.async.} =
   let bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
     error "Failed to connect to bootstrap", service = service, error = error
     return
-  kad.updatePeers(bootstraps)
-  await kad.bootstrap(forceRefresh = true)
+  await seedBootstraps(kad, bootstraps)
   info "kad-dht discovery active", bootstraps = bootstraps.len
 
   await sleepAsync(5.seconds)

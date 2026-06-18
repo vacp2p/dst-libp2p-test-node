@@ -80,7 +80,15 @@ proc connectToBootstrap*(
 
 proc mountKadDht*(switch: Switch, rng: Rng): KadDHT =
   ## Mount kad-dht *before* the switch starts; the switch then starts the protocol
-  ## (no manual start). Bootstrap peers are seeded later via updatePeers once dialed.
+  ## (no manual start). Bootstrap peers are seeded later via seedBootstraps once dialed.
   let kad = KadDHT.new(switch, rng = rng)
   switch.mount(kad)
   kad
+
+proc seedBootstraps*(
+    kad: KadDHT, bootstraps: seq[(PeerId, seq[MultiAddress])]
+) {.async.} =
+  ## Add the dialed bootstrap peers to the routing table, then run one bootstrap
+  ## round so FIND_NODE lookups populate the table and connect us to the network.
+  kad.updatePeers(bootstraps)
+  await kad.bootstrap(forceRefresh = true)
