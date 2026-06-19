@@ -172,6 +172,7 @@ proc main {.async.} =
     builder = SwitchBuilder
       .new()
       .withNoise()
+      .withWildcardResolver()
       .withAddress(MultiAddress.init(address).tryGet())
       .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
 
