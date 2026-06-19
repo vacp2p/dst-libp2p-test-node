@@ -11,5 +11,5 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#26e181e4dd65188051ab4783bcc538ed9579644f", # 2.0.0
+          "https://github.com/vacp2p/nim-libp2p#3045d237df037f3aaf80f21e90cb8fcacb0e4c92", # 2.1.0 with extra dial logging
           "ggplotnim"

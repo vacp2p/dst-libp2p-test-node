@@ -61,7 +61,12 @@ proc connectToBootstrap*(
           BootstrapDialTimeout
         )
         notice "Connected to bootstrap", address = address, peerId = peerId
-        bootstraps.add((peerId, @[address]))
+
+        let learnedAddrs = switch.peerStore[AddressBook][peerId]
+        if learnedAddrs.len == 0:
+          return err("bootstrap did not advertise dialable peer-specific addrs")
+
+        bootstraps.add((peerId, learnedAddrs))
         break
       except CancelledError as exc:
         raise exc
