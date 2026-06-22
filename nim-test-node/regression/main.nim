@@ -1,15 +1,16 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
-import std/[strformat, random, hashes]
+import std/[random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
-import sequtils, math, metrics, metrics/chronos_httpserver
+import math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
 import env
 import ping_utils
+import kad_utils
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -158,78 +159,14 @@ proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
   gossipSub.addValidator([topic], messageValidator)
 
 
-proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAddress], string]] {.async.} =
-  while true:
-    try:
-      let resolvedAddrs =
-        if muxer.toLowerAscii() == "quic":
-          let quicV1 = MultiAddress.init("/quic-v1").tryGet()
-          resolveTAddress(tAddress).mapIt(
-            MultiAddress.init(it, IPPROTO_UDP).tryGet()
-              .concat(quicV1).tryGet()
-          )
-        else:
-          resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
-      info "Address resolved", tAddress = tAddress, resolvedAddrs = resolvedAddrs
-      return ok(resolvedAddrs)
-    except CatchableError as exc:
-      if inShadow:
-        return err(exc.msg)
-      #keep trying for service mode
-      warn "Failed to resolve address", address = tAddress, error = exc.msg
-      await sleepAsync(15.seconds)
-
-proc connectGossipsubPeers(
-  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int, rng: auto
-): Future[Result[int, string]] {.async.} =
-  var
-    addrs: seq[MultiAddress] = @[]
-    tAddresses: seq[string]
-    connected = 0
-
-  if inShadow:
-    var peers = toSeq(0..<networkSize).filterIt(it != myId)
-    rng.shuffle(peers)
-    #collect enough random peers to make target connections
-    let peersAddrs = peers[0..<min(connectTo * 2, peers.len)].mapIt("pod-" & $it & ":" & $myPort)
-    tAddresses = peersAddrs
-  else:
-    let serviceName = getEnv("SERVICE", "nimp2p-service")
-    tAddresses = @[serviceName & ":" & $myPort]
-
-  for tAddress in tAddresses:
-    let resolvedAddrs = (await resolveAddress(muxer, tAddress)).valueOr:
-      warn "Failed to resolve address", tAddress = tAddress, error = error
-      continue
-    addrs.add(resolvedAddrs)
-
-  rng.shuffle(addrs)
-
-  #Make target connections
-  for peer in addrs:
-    if connected > connectTo: break
-    try:
-      discard await switch.connect(peer, allowUnknownPeerId=true).wait(5.seconds)
-      connected.inc()
-      info "Connected!: current connections ", connected = $connected, target = connectTo
-    except CatchableError as exc:
-      warn "Failed to dial ", theirAddress = peer, message = exc.msg
-      await sleepAsync(15.seconds)
-
-  if connected == 0:
-    return err("Failed to connect any peer")
-  elif connected < connectTo:
-    warn "Connected to fewer peers than target", connected = connected, target = connectTo
-  return ok(connected)
-
-
 proc main {.async.} =
   randomize()
   let
     rng = libp2p.newRng()
-    (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
-      error "Error reading peer settings ",  err = error
-      return
+    (myId, muxer, filePath, address, nodeRole) =
+      getPeerDetails().valueOr:
+        error "Error reading peer settings ",  err = error
+        return
   var
     gossipSub: GossipSub
     builder = SwitchBuilder
@@ -250,16 +187,21 @@ proc main {.async.} =
 
   let switch = builder.build()
 
+  # Mount protocols *before* starting the switch (switch.start() starts them, so no
+  # protocol is started manually): GossipSub + ping on normal nodes, kad-dht on all.
+  # The bootstrap is a kad-dht anchor only - it just answers DHT queries.
+  var pingProtocol: Ping
+  if nodeRole == RoleNormal:
+    gossipSub = initializeGossipsub(switch, true, rng)
+    configureGossipsubParams(gossipSub)
+    subscribGossipsubTopic(gossipSub, "test")
+    switch.mount(gossipSub)
+    pingProtocol = Ping.new(rng = rng)
+    switch.mount(pingProtocol)
+  let kad = mountKadDht(switch, rng)
 
-  gossipSub = initializeGossipsub(switch, true, rng)
-  configureGossipsubParams(gossipSub)
-  subscribGossipsubTopic(gossipSub, "test")
-  switch.mount(gossipSub)
-  let pingProtocol = Ping.new(rng = rng)
-  switch.mount(pingProtocol)
   await switch.start()
 
-  # Metrics
   info "Starting metrics server"
   let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
@@ -269,14 +211,22 @@ proc main {.async.} =
 
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
-  #Wait for node building
-  info "GossipSub codecs registered", codecs = gossipSub.codecs
-  await sleepAsync(start_sleep.seconds)
 
-  #connect with peers
-  discard (await connectGossipsubPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
-    error "Failed to establish any connections", error = error
+  if nodeRole == RoleBootstrap:
+    info "Bootstrap node ready (kad-dht anchor)",
+      peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
+    await sleepAsync(2.days)
     return
+
+  # Normal node: dial the bootstrap (after a delay so the network is up), seed its
+  # peers into the routing table, and do one bootstrap round to populate it.
+  await sleepAsync(start_sleep.seconds)
+  let service = getEnv("SERVICE", "bootstrap")
+  let bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
+    error "Failed to connect to bootstrap", service = service, error = error
+    return
+  await seedBootstraps(kad, bootstraps)
+  info "kad-dht discovery active", bootstraps = bootstraps.len
 
   await sleepAsync(5.seconds)
   info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,

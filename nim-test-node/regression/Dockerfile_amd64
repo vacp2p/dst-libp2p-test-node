@@ -1,8 +1,7 @@
+# syntax=docker/dockerfile:1
 FROM debian:bookworm-slim AS builder
 
 WORKDIR /node
-
-COPY .. .
 
 RUN apt-get update && apt-get install -y \
     curl git build-essential ca-certificates \
@@ -50,9 +49,16 @@ RUN echo 'import strutils; echo "OK"' > temp.nim && nim r temp.nim && rm temp.ni
 
 RUN nim --version
 RUN nimble --version
+
+# Install deps from the .nimble only, so a source-only change (main.nim, etc.) does
+# not invalidate this layer and re-fetch nim-libp2p.
+COPY test_node.nimble .
 RUN nimble install -dy --verbose | tee /tmp/install.log && grep -A 20 "libp2p" /tmp/install.log | grep -oP '\b\d+\.\d+\.\d+\b' | head -n1 > ./libp2p_version
 
-RUN nimble c \
+# Now the source. The nimcache is a persistent build cache, so unchanged modules
+# (all of nim-libp2p, on a code-only change) aren't recompiled.
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/nim nimble c \
     --os:linux --cpu:amd64 --passL:"-static -mmusl" \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
