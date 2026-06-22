@@ -1,0 +1,376 @@
+# Optional external exposure for Mix pods.
+#
+# This exposes each StatefulSet pod through its own fixed NodePort:
+# - mix-0  -> <node-external-ip-or-dns>:31400
+# - mix-1  -> <node-external-ip-or-dns>:31401
+# - ...
+# - mix-19 -> <node-external-ip-or-dns>:31419
+#
+# These Services assume the StatefulSet is named `mix`.
+# Kubernetes adds the `statefulset.kubernetes.io/pod-name` label to StatefulSet pods.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-0-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-0
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31400
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-1-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-1
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31401
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-2-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-2
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31402
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-3-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-3
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31403
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-4-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-4
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31404
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-5-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-5
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31405
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-6-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-6
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31406
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-7-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-7
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31407
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-8-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-8
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31408
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-9-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-9
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31409
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-10-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-10
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31410
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-11-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-11
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31411
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-12-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-12
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31412
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-13-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-13
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31413
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-14-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-14
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31414
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-15-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-15
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31415
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-16-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-16
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31416
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-17-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-17
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31417
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-18-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-18
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31418
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mix-19-external
+  namespace: mix
+  labels:
+    app.kubernetes.io/name: mix-test-node
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    statefulset.kubernetes.io/pod-name: mix-19
+  ports:
+    - name: libp2p
+      port: 5000
+      targetPort: libp2p
+      nodePort: 31419

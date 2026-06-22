@@ -8,7 +8,6 @@ import ./helpers
 import ./mix_ping
 
 import sequtils, metrics, metrics/chronos_httpserver
-from nativesockets import getHostname
 
 
 proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAddress], string]] {.async.} =
@@ -57,7 +56,7 @@ proc connectPeers(
 
   #Make target connections
   for peer in addrs:
-    if connected > connectTo: break
+    if connected >= connectTo: break
     try:
       discard await switch.connect(peer, allowUnknownPeerId=true).wait(5.seconds)
       connected.inc()
@@ -84,20 +83,18 @@ proc main {.async.} =
     error "Invalid mix config", err = mixCfg.error
     return
 
-  # Resolve own hostname so MixPubInfo carries a dialable multiaddr.
-  let myHostname = getHostname() & ":" & $myPort
-  let myResolved = (await resolveAddress(muxer, myHostname)).valueOr:
-    error "Failed to resolve own hostname", err = error
-    return
-  if myResolved.len == 0:
-    error "No addresses for own hostname"
+  # Publish the configured dialable address verbatim. In Kubernetes NodePort
+  # deployments this must be the external node address and NodePort, not the
+  # pod IP behind the internal StatefulSet DNS name.
+  let publishedMultiaddr = MultiAddress.init(publishedAddress(myId, muxer)).valueOr:
+    error "Invalid published address", err = error
     return
 
   # generateRandom gives Curve25519 mix keys + secp256k1 libp2p keys; keep
-  # both keypairs and substitute the resolved hostname as the multiaddr.
+  # both keypairs and substitute the published multiaddr.
   let base = MixNodeInfo.generateRandom(myPort.int, rng)
   let mixNodeInfo = initMixNodeInfo(
-    base.peerId, myResolved[0],
+    base.peerId, publishedMultiaddr,
     base.mixPubKey, base.mixPrivKey,
     base.libp2pPubKey, base.libp2pPrivKey,
   )
@@ -161,7 +158,10 @@ proc main {.async.} =
   mixProto.nodePool.add(pubInfos)
   info "Mix nodePool populated", count = pubInfos.len
 
-  asyncSpawn mix_ping.periodicMixPing(mixProto, pingProto)
+  if mixPingEnabled:
+    asyncSpawn mix_ping.periodicMixPing(mixProto, pingProto)
+  else:
+    info "mix-ping disabled"
 
   discard (await connectPeers(switch, muxer, networkSize, myId, connectTo, rng)).valueOr:
     error "Failed to establish any connections", error = error
