@@ -1,0 +1,52 @@
+FROM debian:bookworm-slim AS builder
+
+WORKDIR /node
+
+COPY . .
+
+RUN apt-get update && apt-get install -y \
+    curl git build-essential ca-certificates \
+    gcc libc6-dev-i386 \
+    libssl3 iproute2 procps \
+    libasan8 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+RUN git config --global http.sslVerify false
+
+# Nim 2.2.10 (team CI version; the 2.2.8 test ruled out a Nim-version regression).
+RUN curl https://nim-lang.org/download/nim-2.2.10-linux_x64.tar.xz -o /tmp/nim.tar.xz \
+    && tar -xf /tmp/nim.tar.xz -C /tmp \
+    && cp -r /tmp/nim-2.2.10/* /usr/local \
+    && rm -rf /usr/local/nim* && mv /tmp/nim-2.2.10 /usr/local/nim-2.2.10
+
+RUN nimble refresh
+RUN ln -sf /usr/local/nim-2.2.10/bin/nim /usr/local/bin/nim
+RUN ln -sf /usr/local/nim-2.2.10/bin/nimble /usr/local/bin/nimble
+
+RUN nim --version
+RUN nimble install -dy --verbose | tee /tmp/install.log
+
+# AddressSanitizer build to locate the orc cycle-collector use-after-free.
+# - dynamic glibc (NOT static-musl): ASAN runtime is a shared lib.
+# - --mm:orc -d:useMalloc: route allocations through malloc so ASAN tracks
+#   every alloc/free and can report the freed-here / used-here stacks.
+# - -d:release kept so nodes run fast enough to reach the meshing churn that
+#   triggers the crash; -g + --debugger:native for symbolised stacks.
+RUN nimble c \
+    --os:linux --cpu:amd64 \
+    -d:chronicles_colors=None --threads:on --mm:orc -d:useMalloc \
+    -d:metrics -d:libp2p_network_protocols_metrics -d:release \
+    --stacktrace:on --linetrace:on --debugger:native \
+    --passC:"-fsanitize=address -fno-omit-frame-pointer -g" \
+    --passL:"-fsanitize=address" \
+    main
+
+RUN chmod +x /node/main
+
+# Report the first error (the UAF) with full stacks; skip leak noise at exit.
+ENV ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=0:print_stats=0:log_path=stderr
+
+EXPOSE 5000 8008 8645
+
+ENTRYPOINT ["/node/main"]
