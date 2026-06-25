@@ -3,33 +3,14 @@ FROM debian:bookworm-slim AS builder
 
 WORKDIR /node
 
+# All build + runtime packages in one layer (previously four separate apt-get
+# update/install passes that re-installed curl/git/build-essential/ca-certs/etc.).
 RUN apt-get update && apt-get install -y \
     curl git build-essential ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y \
-    gcc-multilib g++-multilib libc6-dev-i386 \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y \
-    curl git build-essential ca-certificates \
-    gcc libc6-dev-i386 \
+    gcc gcc-multilib g++-multilib libc6-dev-i386 \
     libssl3 iproute2 procps \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
-
-
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libssl3 \
-    iproute2 \
-    curl \
-    procps \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
 
 RUN git config --global http.sslVerify false
 
