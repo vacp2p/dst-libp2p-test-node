@@ -34,7 +34,7 @@ RUN nimble install -dy --verbose | tee /tmp/install.log
 # - -d:release kept so nodes run fast enough to reach the meshing churn that
 #   triggers the crash; -g + --debugger:native for symbolised stacks.
 RUN nimble c \
-    --os:linux --cpu:amd64 \
+    --os:linux --cpu:amd64 --parallelBuild:4 \
     -d:chronicles_colors=None --threads:on --mm:orc -d:useMalloc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     --stacktrace:on --linetrace:on --debugger:native \
