@@ -34,17 +34,17 @@ RUN apt-get update && \
 
 RUN git config --global http.sslVerify false
 
-RUN curl https://nim-lang.org/download/nim-2.2.8-linux_x64.tar.xz -o /tmp/nim.tar.xz \
+RUN curl https://nim-lang.org/download/nim-2.2.10-linux_x64.tar.xz -o /tmp/nim.tar.xz \
     && tar -xf /tmp/nim.tar.xz -C /tmp \
-    && cp -r /tmp/nim-2.2.8/* /usr/local \
-    && rm -rf /usr/local/nim* && mv /tmp/nim-2.2.8 /usr/local/nim-2.2.8
+    && cp -r /tmp/nim-2.2.10/* /usr/local \
+    && rm -rf /usr/local/nim* && mv /tmp/nim-2.2.10 /usr/local/nim-2.2.10
 
 
 RUN nimble refresh
 
-RUN ln -sf /usr/local/nim-2.2.8/bin/nim /usr/local/bin/nim
-RUN ln -sf /usr/local/nim-2.2.8/bin/nimble /usr/local/bin/nimble
-RUN ln -sf /usr/local/nim-2.2.8/bin/nim /usr/local/bin/nimcheck
+RUN ln -sf /usr/local/nim-2.2.10/bin/nim /usr/local/bin/nim
+RUN ln -sf /usr/local/nim-2.2.10/bin/nimble /usr/local/bin/nimble
+RUN ln -sf /usr/local/nim-2.2.10/bin/nim /usr/local/bin/nimcheck
 
 RUN echo 'import strutils; echo "OK"' > temp.nim && nim r temp.nim && rm temp.nim
 
@@ -54,7 +54,7 @@ RUN nimble install -dy --verbose | tee /tmp/install.log && grep -A 20 "libp2p" /
 
 RUN nimble c \
     --os:linux --cpu:amd64 --passL:"-static -mmusl" \
-    -d:chronicles_colors=None --threads:on --mm:orc \
+    -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release --stacktrace:on --linetrace:on \
     --passL:"-static-libgcc -static-libstdc++" \
     main
