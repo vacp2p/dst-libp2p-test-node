@@ -270,8 +270,9 @@ proc main {.async.} =
   configureGossipsubParams(gossipSub)
   subscribGossipsubTopic(gossipSub, "test")
   switch.mount(gossipSub)
-  let pingProtocol = Ping.new(rng = rng)
-  switch.mount(pingProtocol)
+  # ping disabled for the regression (Alberto)
+  # let pingProtocol = Ping.new(rng = rng)
+  # switch.mount(pingProtocol)
   await switch.start()
 
   # Open the publish endpoint up-front, before the kad-dht bootstrap below, so a
@@ -312,8 +313,8 @@ proc main {.async.} =
   info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,
     peersConnected = gossipSub.gossipsub.getOrDefault("test").len
 
-  # Periodic mesh-only pings
-  asyncSpawn pingMeshLoop(switch, pingProtocol, gossipSub, "test")
+  # Periodic mesh-only pings — disabled for the regression (Alberto)
+  # asyncSpawn pingMeshLoop(switch, pingProtocol, gossipSub, "test")
 
   await sleepAsync(2.days)
 
