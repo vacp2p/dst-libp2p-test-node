@@ -1,5 +1,5 @@
 import std/[sets, sequtils]
-import chronos, chronicles
+import chronos, chronicles, results
 import libp2p/protocols/service_discovery
 import libp2p/protocols/service_discovery/types
 import libp2p/extended_peer_record
@@ -7,7 +7,18 @@ import libp2p/extended_peer_record
 logScope:
   topics = "dst"
 
-proc startAdvertisingServices*(disco: ServiceDiscovery, services: seq[ServiceInfo]) =
+proc serviceDataLen(service: ServiceInfo): int =
+  when compiles(service.data.len):
+    service.data.len
+  else:
+    if service.data.isSome:
+      service.data.get().len
+    else:
+      0
+
+proc startAdvertisingServices*(
+    disco: ServiceDiscovery, services: seq[ServiceInfo]
+) =
   if services.len == 0:
     warn "No services configured for advertising"
     return

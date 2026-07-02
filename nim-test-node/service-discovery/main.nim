@@ -1,5 +1,6 @@
 import chronos, chronicles
 import std/sequtils
+import results
 import libp2p, libp2p/[multiaddress]
 import libp2p/extended_peer_record
 import libp2p/protocols/kademlia
@@ -7,6 +8,17 @@ import env, helpers, core
 
 logScope:
   topics = "dst"
+
+proc serviceInfo(id: string, data: seq[byte]): ServiceInfo =
+  when compiles(ServiceInfo(id: id, data: data)):
+    ServiceInfo(id: id, data: data)
+  else:
+    let serviceData =
+      if data.len > 0:
+        Opt.some(data)
+      else:
+        Opt.none(seq[byte])
+    ServiceInfo(id: id, data: serviceData)
 
 proc main() {.async.} =
   let cfg = getNodeConfig().valueOr:
@@ -43,7 +55,7 @@ proc main() {.async.} =
   discard await startHealthServer(cfg.healthPort)
 
   let advertisedServices =
-    cfg.advertiseServices.mapIt(ServiceInfo(id: it, data: cfg.serviceData))
+    cfg.advertiseServices.mapIt(serviceInfo(it, cfg.serviceData))
 
   case cfg.role
   of RoleBootstrap:
