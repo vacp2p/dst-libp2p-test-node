@@ -1,8 +1,17 @@
 import std/[sets, sequtils]
-import chronos, chronicles
+import chronos, chronicles, results
 import libp2p/protocols/service_discovery
 import libp2p/protocols/service_discovery/types
 import libp2p/extended_peer_record
+
+proc serviceDataLen(service: ServiceInfo): int =
+  when compiles(service.data.len):
+    service.data.len
+  else:
+    if service.data.isSome:
+      service.data.get().len
+    else:
+      0
 
 proc startAdvertisingServices*(
     disco: ServiceDiscovery, services: seq[ServiceInfo]
@@ -15,7 +24,7 @@ proc startAdvertisingServices*(
     disco.startAdvertising(service)
     notice "Advertising service",
       service = service.id,
-      dataLen = service.data.len
+      dataLen = service.serviceDataLen()
 
 proc startDiscoveringServicesLog*(
     disco: ServiceDiscovery, serviceIds: seq[string]
