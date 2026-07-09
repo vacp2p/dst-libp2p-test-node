@@ -218,9 +218,10 @@ proc main {.async.} =
     await sleepAsync(2.days)
     return
 
-  # Normal node: dial the bootstrap (after a delay so the network is up), seed its
-  # peers into the routing table, and do one bootstrap round to populate it.
-  await sleepAsync(start_sleep.seconds)
+  # Normal node: stagger the bootstrap dial by pod index (a small per-pod delay) so
+  # 1000 nodes don't stampede the bootstrap at once, then seed its peers into the
+  # routing table and do one bootstrap round to populate it.
+  await sleepAsync((myId * startupJitterStepMs).milliseconds)
   let service = getEnv("SERVICE", "bootstrap")
   let bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
     error "Failed to connect to bootstrap", service = service, error = error
