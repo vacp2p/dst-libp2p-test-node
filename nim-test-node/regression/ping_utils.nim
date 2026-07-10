@@ -6,7 +6,7 @@ import libp2p/protocols/ping
 import libp2p/protocols/pubsub/gossipsub
 
 const
-  MeshPingInterval = 45.seconds
+  MeshPingInterval = 10.seconds
   MeshPingTimeout  = 4.seconds
   MeshDialTimeout  = 4.seconds
   MeshCloseTimeout = 2.seconds
