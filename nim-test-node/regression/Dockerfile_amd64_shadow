@@ -34,6 +34,15 @@ COPY . .
 RUN nimble refresh
 RUN nimble install -dy --verbose
 
+# Simulator-only lsquic patch: floor engine tick re-arms, switched by the
+# LSQUIC_TICK_FLOOR_US env var at runtime (unset/0 = stock behavior). Under
+# Shadow, lsquic's diff=0 "tick now" re-arm livelocks the event loop at one
+# simulated instant; the floor lets simulated time advance.
+COPY lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
+RUN cd /root/.nimble/pkgs2/lsquic-0.5.4-* \
+    && git apply -p1 --verbose /tmp/lsquic-tick-floor.patch \
+    && grep -q tickFloorUs lsquic/context/context.nim
+
 # Dynamic link: no `-static`, no `-mmusl`, no `-static-libgcc/-libstdc++`.
 RUN nimble c \
     --os:linux --cpu:amd64 \
