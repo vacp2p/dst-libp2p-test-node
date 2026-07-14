@@ -21,6 +21,25 @@ nim c \
 
 If you need local `nim-libp2p` changes, do `nimble setup -l` and modify `nimble.paths` pointing to your local repo root.
 
+## Node flow
+
+On startup the node loads its configuration from environment variables, builds a libp2p switch, and creates a 
+`ServiceDiscovery` instance. By default the discovery protocol is mounted on the switch so the node can answer inbound 
+service-discovery requests. When `SD_CLIENT=true`, the discovery instance runs in DHT client mode instead: it is started 
+locally but is not mounted as an inbound protocol.
+
+After the switch starts, non-bootstrap roles wait for the configured startup jitter, connect to the bootstrap service, 
+add the connected bootstrap peers to the discovery routing table, and run `bootstrap`. Bootstrap nodes only stay online 
+as discovery anchors.
+
+The active role then decides the long-running behavior:
+
+- `RoleBootstrap` keeps the node alive for other peers to connect to.
+- `RoleAdvertiser` publishes the configured `ADVERTISE_SERVICES`.
+- `RoleDiscoverer` periodically looks up `DISCOVER_SERVICES`.
+- `RoleHybrid` both advertises and periodically discovers services.
+
+The health server starts after bootstrap setup and exposes `/health` and `/ready`.
 
 ## Environment variables
 
@@ -37,6 +56,7 @@ If you need local `nim-libp2p` changes, do `nimble setup -l` and modify `nimble.
 - `STARTUP_JITTER_STEP_MS` default `200` (used when `STARTUP_JITTER_MS` is not set)
 - `SD_SAFETY_PARAM` default `0.0` (0 means immediate confirmations are easier in tests)
 - `SD_ADVERT_EXPIRY_SECONDS` default `900`
+- `SD_CLIENT` default `false` (run service discovery as a DHT client, without mounting an inbound handler)
 - `SD_XPR_PUBLISHING` default `true`
 
 ## Run examples
