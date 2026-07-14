@@ -25,10 +25,12 @@ proc main() {.async.} =
   var switch = buildSwitch(cfg.muxer, cfg.maxConnections, cfg.listenAddress)
 
   let disco = mountServiceDiscovery(
-    switch, cfg.safetyParam, cfg.ipSimCoefficient, cfg.advertExpiry, cfg.xprPublishing
+    switch, cfg.client, cfg.safetyParam, cfg.ipSimCoefficient, cfg.advertExpiry, cfg.xprPublishing
   )
 
   await switch.start()
+  if cfg.client:
+    await disco.start()
 
   let selfId = switch.peerInfo.peerId
   notice "Service discovery node started",
@@ -46,8 +48,13 @@ proc main() {.async.} =
         service = cfg.bootstrapService, error
       quit(1)
 
+    info "Calling disco.updatePeers(bootstrapNodes)"
     disco.updatePeers(bootstrapNodes)
-    await disco.bootstrap(forceRefresh = true)
+    info "disco.updatePeers(bootstrapNodes) finished"
+    info "Force refresh bootstrap"
+    # We only want to do forceRefresh when we are not a client.
+    await disco.bootstrap(forceRefresh = not cfg.client)
+    info "Force refresh bootstrap finished, starting health endpoint"
 
   discard await startHealthServer(cfg.healthPort)
 
