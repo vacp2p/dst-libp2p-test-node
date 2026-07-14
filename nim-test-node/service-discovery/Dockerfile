@@ -25,6 +25,7 @@ RUN nimble c \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     --passL:"-static-libgcc -static-libstdc++" \
+    -d:chronicles_log_level=INFO \
     --out:/node/main \
     main
 
