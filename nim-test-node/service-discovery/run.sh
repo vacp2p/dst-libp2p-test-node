@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-IMAGE_NAME="soutullostatus/dst-test-node-service-discovery"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IMAGE_NAME="soutullostatus/service-discovery:v2.1.0"
 NETWORK_NAME="service-discovery-network"
 
 echo "Cleaning previous environment..."
@@ -10,7 +11,7 @@ docker rm -f sd-bootstrap sd-advertiser sd-discoverer 2>/dev/null || true
 docker network rm "${NETWORK_NAME}" 2>/dev/null || true
 
 echo "Building image..."
-docker build -t "${IMAGE_NAME}" .
+docker build -t "${IMAGE_NAME}" "${SCRIPT_DIR}"
 
 echo "Creating network..."
 docker network create "${NETWORK_NAME}"
@@ -42,6 +43,7 @@ docker run -d \
   -e SERVICE=sd-bootstrap \
   -e DISCOVER_SERVICES=chat \
   -e LOOKUP_INTERVAL_SECONDS=10 \
+  -e SD_CLIENT=true \
   "${IMAGE_NAME}"
 
 echo "Done."
