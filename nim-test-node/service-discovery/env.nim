@@ -29,6 +29,7 @@ type
     safetyParam*: float64
     ipSimCoefficient*: float64
     advertExpiry*: Duration
+    client*: bool
     xprPublishing*: bool
     maxConnections*: int
     maxBootstraps*: int
@@ -41,7 +42,7 @@ proc `$`(c: NodeConfig): string =
     ", healthPort=" & $c.healthPort & ", lookupInterval=" & $c.lookupInterval &
     ", startupJitterMs=" & $c.startupJitterMs & ", safetyParam=" & $c.safetyParam &
     ", ipSimCoefficient=" & $c.ipSimCoefficient & ", advertExpiry=" & $c.advertExpiry &
-    ", xprPublishing=" & $c.xprPublishing & ", maxConnections=" & $c.maxConnections &
+    ", client=" & $c.client &xprPublishing=" & $c.xprPublishing & ", maxConnections=" & $c.maxConnections &
     ", maxBootstraps=" & $c.maxBootstraps & ")"
 
 proc parseIntEnv(name: string, defaultValue: string): Result[int, string] =
@@ -134,6 +135,9 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
   if advertExpirySeconds <= 0:
     return err("SD_ADVERT_EXPIRY_SECONDS must be > 0")
 
+  let client = parseBoolEnv("SD_CLIENT", "false").valueOr:
+    return err(error)
+
   let xprPublishing = parseBoolEnv("SD_XPR_PUBLISHING", "true").valueOr:
     return err(error)
 
@@ -174,6 +178,7 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     safetyParam: safetyParam,
     ipSimCoefficient: ipSimCoefficient,
     advertExpiry: advertExpirySeconds.seconds,
+    client: client,
     xprPublishing: xprPublishing,
     maxConnections: maxConnections,
     maxBootstraps: maxBootstraps,
