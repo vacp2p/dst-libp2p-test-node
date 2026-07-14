@@ -52,8 +52,8 @@ The health server starts after bootstrap setup and exposes `/health` and `/ready
 - `SERVICE_DATA` payload attached to advertised services (default empty)
 - `LOOKUP_INTERVAL_SECONDS` default `15`
 - `HEALTH_PORT` default `8645`
-- `STARTUP_JITTER_MS` optional fixed jitter in milliseconds
-- `STARTUP_JITTER_STEP_MS` default `200` (used when `STARTUP_JITTER_MS` is not set)
+- `STARTUP_JITTER_MS` optional fixed jitter in milliseconds; if unset, jitter is `nodeIndex * STARTUP_JITTER_STEP_MS`
+- `STARTUP_JITTER_STEP_MS` default `10` (with a normal standalone hostname, `nodeIndex` is usually `0`, so the effective default jitter is `0 ms`)
 - `SD_SAFETY_PARAM` default `0.0` (0 means immediate confirmations are easier in tests)
 - `SD_ADVERT_EXPIRY_SECONDS` default `900`
 - `SD_CLIENT` default `false` (run service discovery as a DHT client, without mounting an inbound handler)
