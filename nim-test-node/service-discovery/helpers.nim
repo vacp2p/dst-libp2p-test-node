@@ -108,6 +108,7 @@ proc connectToBootstraps*(
 
 proc mountServiceDiscovery*(
     switch: Switch,
+    client: bool,
     safetyParam: float64,
     ipSimCoefficient: float64,
     advertExpiry: Duration,
@@ -127,12 +128,15 @@ proc mountServiceDiscovery*(
     bootstrapNodes = @[],
     config = kadCfg,
     rng = libp2p.newRng(),
+    client = client,
     codec = ExtendedServiceDiscoveryCodec,
     discoConfig = discoCfg,
     xprPublishing = xprPublishing,
   )
 
-  switch.mount(disco)
+  if not client:
+    switch.mount(disco)
+
   disco
 
 proc startHealthServer*(port: Port): Future[HttpServerRef] {.async.} =
