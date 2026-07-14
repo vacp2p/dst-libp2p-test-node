@@ -86,8 +86,12 @@ proc connectToBootstraps*(
     var backoff = 1.seconds
     for attempt in 1 .. 10:
       try:
-        let peerId =
-          await switch.connect(addr, allowUnknownPeerId = true).wait(10.seconds)
+        # use parseFullAddress() maybe?
+        
+        # Don't do that, would never happen in a real network.
+        #let peerId =
+        #  await switch.connect(addr, allowUnknownPeerId = true).wait(10.seconds)
+        
         notice "Connected to bootstrap", address = addr, peerId, attempt
         bootstraps.add((peerId, @[addr]))
         break

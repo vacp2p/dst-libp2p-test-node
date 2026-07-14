@@ -24,8 +24,51 @@ proc main() {.async.} =
 
   var switch = buildSwitch(cfg.muxer, cfg.maxConnections, cfg.listenAddress)
 
+  var bootstrapNodes: seq[(PeerId, seq[MultiAddress]) = @[]
+  var services = seq[ServiceInfo] = @[]
+
+  if cfg.role != Bootstrap and cfg.startupJitterMs > 0:
+    notice "Applying startup jitter", delayMs = cfg.startupJitterMs
+    await sleepAsync(cfg.startupJitterMs.milliseconds)
+
+  case cfg.role
+  of RoleAdvertiser:
+    let connectedBootstraps = await connectToBootstraps(
+      switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps
+    )
+
+    bootstrapNodes = connectedBootstraps.valueOr:
+      error "Failed to connect to bootstrap nodes",
+        service = cfg.bootstrapService, error
+      quit(1)
+
+    services = cfg.advertiseServices.mapIt(serviceInfo(it, cfg.serviceData))
+  
+  of RoleDiscoverer:
+    let connectedBootstraps = await connectToBootstraps(
+      switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps
+    )
+
+    bootstrapNodes = connectedBootstraps.valueOr:
+      error "Failed to connect to bootstrap nodes",
+        service = cfg.bootstrapService, error
+      quit(1)
+
+  of RoleHybrid:
+    let connectedBootstraps = await connectToBootstraps(
+      switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps
+    )
+
+    bootstrapNodes = connectedBootstraps.valueOr:
+      error "Failed to connect to bootstrap nodes",
+        service = cfg.bootstrapService, error
+      quit(1)
+
+    services = cfg.advertiseServices.mapIt(serviceInfo(it, cfg.serviceData))
+
   let disco = mountServiceDiscovery(
-    switch, cfg.client, cfg.safetyParam, cfg.ipSimCoefficient, cfg.advertExpiry, cfg.xprPublishing
+    switch, bootstrapNodes, cfg.client, cfg.safetyParam, cfg.ipSimCoefficient,
+    cfg.advertExpiry, services, cfg.xprPublishing
   )
 
   await switch.start()
@@ -36,30 +79,7 @@ proc main() {.async.} =
   notice "Service discovery node started",
     peerId = $selfId, role = cfg.role, listen = cfg.listenAddress
 
-  if cfg.role != RoleBootstrap:
-    if cfg.startupJitterMs > 0:
-      notice "Applying startup jitter", delayMs = cfg.startupJitterMs
-      await sleepAsync(cfg.startupJitterMs.milliseconds)
-
-    let connectedBootstraps =
-      await connectToBootstraps(switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps)
-    let bootstrapNodes = connectedBootstraps.valueOr:
-      error "Failed to connect to bootstrap nodes",
-        service = cfg.bootstrapService, error
-      quit(1)
-
-    info "Calling disco.updatePeers(bootstrapNodes)"
-    disco.updatePeers(bootstrapNodes)
-    info "disco.updatePeers(bootstrapNodes) finished"
-    info "Force refresh bootstrap"
-    # We only want to do forceRefresh when we are not a client.
-    await disco.bootstrap(forceRefresh = not cfg.client)
-    info "Force refresh bootstrap finished, starting health endpoint"
-
   discard await startHealthServer(cfg.healthPort)
-
-  let advertisedServices =
-    cfg.advertiseServices.mapIt(serviceInfo(it, cfg.serviceData))
 
   case cfg.role
   of RoleBootstrap:
@@ -67,15 +87,13 @@ proc main() {.async.} =
     while true:
       await sleepAsync(1.hours)
   of RoleAdvertiser:
-    disco.startAdvertisingServices(advertisedServices)
     while true:
       await sleepAsync(1.hours)
   of RoleDiscoverer:
     disco.startDiscoveringServicesLog(cfg.discoverServices)
     await disco.runLookupLoop(cfg.discoverServices, cfg.lookupInterval)
   of RoleHybrid:
-    disco.startAdvertisingServices(advertisedServices)
     disco.startDiscoveringServicesLog(cfg.discoverServices)
     await disco.runLookupLoop(cfg.discoverServices, cfg.lookupInterval)
-
+  
 waitFor(main())
