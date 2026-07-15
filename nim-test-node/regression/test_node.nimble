@@ -15,5 +15,6 @@ requires "nim >= 2.2.0",
           # Hold lsquic at 0.5.4: the version v2.2.0 and v2.1.0 were built and tested
           # against (0.5.5/0.5.6 were tagged after the cluster runs). Keeps the shadow
           # quic stack matching the cluster and lets the tick-floor patch apply.
-          "lsquic >= 0.5.4 & < 0.5.5",
+          # URL-pinned to the tag so nimble can't greedily resolve a newer lsquic.
+          "https://github.com/vacp2p/nim-lsquic#v0.5.4",
           "ggplotnim"
