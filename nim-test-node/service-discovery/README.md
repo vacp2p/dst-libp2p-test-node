@@ -55,9 +55,12 @@ The health server starts after bootstrap setup and exposes `/health` and `/ready
 - `STARTUP_JITTER_MS` optional fixed jitter in milliseconds; if unset, jitter is `nodeIndex * STARTUP_JITTER_STEP_MS`
 - `STARTUP_JITTER_STEP_MS` default `10` (with a normal standalone hostname, `nodeIndex` is usually `0`, so the effective default jitter is `0 ms`)
 - `SD_SAFETY_PARAM` default `0.0` (0 means immediate confirmations are easier in tests)
+- `SD_IP_SIM_COEFF` default `0.0`
 - `SD_ADVERT_EXPIRY_SECONDS` default `900`
 - `SD_CLIENT` default `false` (run service discovery as a DHT client, without mounting an inbound handler)
 - `SD_XPR_PUBLISHING` default `true`
+- `MAXCONNECTIONS` default `200` (maximum connections configured on the libp2p switch)
+- `MAXBOOTSTRAPS` default `1` (maximum bootstrap peers to connect to from the resolved `SERVICE` addresses)
 
 ## Run examples
 
