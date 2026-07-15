@@ -12,7 +12,12 @@ let
   prometheusPort* = Port(8008)
   myPort* = Port(5000)
   chunks* = parseInt(getEnv("FRAGMENTS", "1"))                  #No. of fragments for each message
-  startupJitterStepMs* = parseInt(getEnv("STARTUP_JITTER_STEP_MS", "50"))  # per-pod dial stagger (pod index * this); replaces the old flat STARTSLEEP
+  # Per-pod startup jitter (pod index * this ms) to spread bootstrap dials and avoid
+  # simultaneous-dial collisions. Mainly for Shadow, which starts all hosts at the same
+  # simulated instant; real deployments get this spread naturally. Node availability
+  # before connect is handled by the readiness probe + publish_not_ready_addresses
+  # (10ksim#315), so no flat sync delay is needed here.
+  startupJitterStepMs* = parseInt(getEnv("STARTUP_JITTER_STEP_MS", "50"))
   metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
