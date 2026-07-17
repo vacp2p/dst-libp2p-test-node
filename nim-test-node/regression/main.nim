@@ -274,6 +274,11 @@ proc main {.async.} =
   switch.mount(pingProtocol)
   await switch.start()
 
+  # Open the publish endpoint up-front, before the kad-dht bootstrap below, so a
+  # stalled bootstrap can't keep a node from ever opening :8645.
+  info "Starting listening endpoint for publish controller"
+  discard gossipSub.startHttpServer(myId)
+
   # Metrics
   info "Starting metrics server"
   let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
@@ -309,9 +314,6 @@ proc main {.async.} =
 
   # Periodic mesh-only pings
   asyncSpawn pingMeshLoop(switch, pingProtocol, gossipSub, "test")
-
-  info "Starting listening endpoint for publish controller"
-  discard gossipSub.startHttpServer(myId)
 
   await sleepAsync(2.days)
 
