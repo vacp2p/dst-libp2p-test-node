@@ -1,0 +1,81 @@
+diff -ruN orig/lsquic/context/client.nim patched/lsquic/context/client.nim
+--- orig/lsquic/context/client.nim	2026-07-10 11:58:45
++++ patched/lsquic/context/client.nim	2026-07-10 12:00:04
+@@ -141,6 +141,8 @@
+   ctx.settings.es_max_sfcw = 2 * 1024 * 1024
+   ctx.settings.es_init_max_stream_data_bidi_local = ctx.settings.es_sfcw
+   ctx.settings.es_init_max_stream_data_bidi_remote = ctx.settings.es_sfcw
++  if tickFloorUs > 0:
++    ctx.settings.es_clock_granularity = tickFloorUs.cuint
+ 
+   ctx.stream_if = struct_lsquic_stream_if(
+     on_new_conn: onNewConn,
+diff -ruN orig/lsquic/context/context.nim patched/lsquic/context/context.nim
+--- orig/lsquic/context/context.nim	2026-07-10 11:58:45
++++ patched/lsquic/context/context.nim	2026-07-10 12:00:04
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0 OR MIT
+ # Copyright (c) Status Research & Development GmbH 
+ 
+-import std/[deques, hashes, sets, strutils]
++import std/[deques, hashes, sets, strutils, os]
+ import boringssl
+ import chronos
+ import chronos/osdefs
+@@ -12,6 +12,18 @@
+ let SSL_CTX_ID = SSL_CTX_get_ex_new_index(0, nil, nil, nil, nil) # Yes, this is global
+ doAssert SSL_CTX_ID >= 0, "could not generate global ssl_ctx id"
+ 
++# Optional floor (microseconds) on engine tick re-arm intervals, read from
++# LSQUIC_TICK_FLOOR_US. Coarsens the wake-up cadence for discrete-event
++# simulators (e.g. Shadow), where the default 1ms/sub-ms per-engine ticks
++# explode the event volume. 0 (default) keeps stock behavior.
++let tickFloorUs* = block:
++  var v = 0
++  try:
++    v = parseInt(getEnv("LSQUIC_TICK_FLOOR_US", "0"))
++  except ValueError:
++    discard
++  max(v, 0)
++
+ type
+   CidKey* = object
+     len*: uint8
+@@ -112,7 +124,10 @@
+ 
+   if ctx.processing:
+     if not ctx.tickTimeout.isNil:
+-      ctx.tickTimeout.set(Moment.now())
++      if tickFloorUs > 0:
++        ctx.tickTimeout.set(tickFloorUs.microseconds)
++      else:
++        ctx.tickTimeout.set(Moment.now())
+     return
+ 
+   ctx.processing = true
+@@ -128,9 +143,10 @@
+   if lsquic_engine_earliest_adv_tick(ctx.engine, addr diff) == 0:
+     return
+ 
+-  let delta =
+-    if diff < 0: LSQUIC_DF_CLOCK_GRANULARITY.microseconds else: diff.microseconds
+-  ctx.tickTimeout.set(delta)
++  var deltaUs = if diff < 0: LSQUIC_DF_CLOCK_GRANULARITY.int else: diff.int
++  if deltaUs < tickFloorUs:
++    deltaUs = tickFloorUs
++  ctx.tickTimeout.set(deltaUs.microseconds)
+ 
+ proc stop*(ctx: QuicContext) {.raises: [].} =
+   ## Quiesce the context before closing the UDP transport so late datagrams and
+diff -ruN orig/lsquic/context/server.nim patched/lsquic/context/server.nim
+--- orig/lsquic/context/server.nim	2026-07-10 11:58:45
++++ patched/lsquic/context/server.nim	2026-07-10 12:00:04
+@@ -75,6 +75,8 @@
+   ctx.settings.es_max_sfcw = 1 * 1024 * 1024
+   ctx.settings.es_init_max_stream_data_bidi_local = ctx.settings.es_sfcw
+   ctx.settings.es_init_max_stream_data_bidi_remote = ctx.settings.es_sfcw
++  if tickFloorUs > 0:
++    ctx.settings.es_clock_granularity = tickFloorUs.cuint
+ 
+   ctx.stream_if = struct_lsquic_stream_if(
+     on_new_conn: onNewConn,
