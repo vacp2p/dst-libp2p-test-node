@@ -39,9 +39,15 @@ RUN nimble install -dy --verbose
 # Shadow, lsquic's diff=0 "tick now" re-arm livelocks the event loop at one
 # simulated instant; the floor lets simulated time advance.
 COPY lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
-RUN cd /root/.nimble/pkgs2/lsquic-0.5.4-* \
-    && git apply -p1 --verbose /tmp/lsquic-tick-floor.patch \
-    && grep -q tickFloorUs lsquic/context/context.nim
+RUN set -eu; \
+    patched=0; \
+    for d in /root/.nimble/pkgs2/lsquic-*; do \
+      [ -f "$d/lsquic/context/context.nim" ] || continue; \
+      ( cd "$d" && git apply -p1 --verbose /tmp/lsquic-tick-floor.patch \
+        && grep -q tickFloorUs lsquic/context/context.nim ); \
+      echo "patched $d"; patched=$((patched+1)); \
+    done; \
+    [ "$patched" -gt 0 ] || { echo "no lsquic package found to patch"; exit 1; }
 
 # Dynamic link: no `-static`, no `-mmusl`, no `-static-libgcc/-libstdc++`.
 RUN nimble c \
@@ -49,7 +55,8 @@ RUN nimble c \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     main \
-    && chmod +x /node/main
+    && chmod +x /node/main \
+    && grep -qa LSQUIC_TICK_FLOOR_US /node/main
 
 # Tiny final stage: the binary + its runtime deps. The image's role is to hand
 # off /node/main to an init container, not to run anything itself. We still
