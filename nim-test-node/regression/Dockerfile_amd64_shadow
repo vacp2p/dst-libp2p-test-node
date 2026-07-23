@@ -47,7 +47,9 @@ RUN set -eu; \
         && grep -q tickFloorUs lsquic/context/context.nim ); \
       echo "patched $d"; patched=$((patched+1)); \
     done; \
-    [ "$patched" -gt 0 ] || { echo "no lsquic package found to patch"; exit 1; }
+    [ "$patched" -gt 0 ] || { echo "no lsquic package found to patch"; exit 1; }; \
+    echo "PATCH-STATE-BEFORE-COMPILE:"; \
+    grep -l tickFloorUs /root/.nimble/pkgs2/lsquic-*/lsquic/context/context.nim || echo "  none patched"
 
 # Dynamic link: no `-static`, no `-mmusl`, no `-static-libgcc/-libstdc++`.
 RUN nimble c \
@@ -56,6 +58,8 @@ RUN nimble c \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     main \
     && chmod +x /node/main \
+    && echo "PATCH-STATE-AFTER-COMPILE:" \
+    && (grep -l tickFloorUs /root/.nimble/pkgs2/lsquic-*/lsquic/context/context.nim || echo "  WIPED by nimble re-resolve") \
     && grep -qa LSQUIC_TICK_FLOOR_US /node/main
 
 # Tiny final stage: the binary + its runtime deps. The image's role is to hand
