@@ -34,9 +34,8 @@ COPY . .
 RUN nimble refresh
 RUN nimble install -dy --verbose
 
-# Floor lsquic's engine tick re-arms, switched at runtime by LSQUIC_TICK_FLOOR_US
-# (unset/0 = stock). Shadow livelocks on lsquic's diff=0 "tick now" re-arm.
-# Patch the package cache: `nimble c` re-resolves and reinstalls over pkgs2.
+# Floor lsquic's engine tick re-arms so Shadow can advance simulated time.
+# Gated by LSQUIC_TICK_FLOOR_US (unset/0 = stock). See README.md.
 COPY lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
 RUN set -eu; \
     patched=0; \
