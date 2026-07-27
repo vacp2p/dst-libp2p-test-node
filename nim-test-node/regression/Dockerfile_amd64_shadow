@@ -34,13 +34,30 @@ COPY . .
 RUN nimble refresh
 RUN nimble install -dy --verbose
 
+# Floor lsquic's engine tick re-arms so Shadow can advance simulated time.
+# Gated by LSQUIC_TICK_FLOOR_US (unset/0 = stock). See README.md.
+COPY lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
+RUN set -eu; \
+    patched=0; \
+    for d in /root/.nimble/pkgcache/*lsquic*/ /root/.nimble/pkgs2/lsquic-*/; do \
+      [ -f "${d}lsquic/context/context.nim" ] || continue; \
+      if grep -q tickFloorUs "${d}lsquic/context/context.nim"; then echo "already patched $d"; continue; fi; \
+      ( cd "$d" && git apply -p1 /tmp/lsquic-tick-floor.patch ); \
+      echo "patched $d"; patched=$((patched+1)); \
+    done; \
+    [ "$patched" -gt 0 ] || { echo "no lsquic package found to patch"; exit 1; }
+
 # Dynamic link: no `-static`, no `-mmusl`, no `-static-libgcc/-libstdc++`.
 RUN nimble c \
     --os:linux --cpu:amd64 \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     main \
-    && chmod +x /node/main
+    && chmod +x /node/main \
+    && (grep -l tickFloorUs /root/.nimble/pkgs2/lsquic-*/lsquic/context/context.nim \
+        || echo "patch WIPED by nimble re-resolve") \
+    && grep -qa LSQUIC_TICK_FLOOR_US /node/main \
+    && echo "TICK-FLOOR VERIFIED IN BINARY"
 
 # Tiny final stage: the binary + its runtime deps. The image's role is to hand
 # off /node/main to an init container, not to run anything itself. We still
