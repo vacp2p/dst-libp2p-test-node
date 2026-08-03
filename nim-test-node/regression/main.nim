@@ -35,6 +35,8 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
     # warm-up
     if timestampNs < 1000000: return
 
+    notePublishingStarted()
+
     # Log received message
     info "Received message",
       msgId = msgId,
@@ -233,8 +235,8 @@ proc main {.async.} =
   info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,
     peersConnected = gossipSub.gossipsub.getOrDefault("test").len
 
-  # Periodic mesh-only pings
-  asyncSpawn pingMeshLoop(switch, pingProtocol, gossipSub, "test")
+  # Hold connections open until gossipsub traffic takes over
+  asyncSpawn pingLoop(switch, pingProtocol)
 
   info "Starting listening endpoint for publish controller"
   discard gossipSub.startHttpServer(myId)
