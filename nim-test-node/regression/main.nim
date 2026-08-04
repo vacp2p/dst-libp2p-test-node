@@ -204,6 +204,12 @@ proc main {.async.} =
 
   await switch.start()
 
+  # Before the staggered bootstrap dial below, not after. A node's mesh arrives on
+  # inbound dials from nodes that bootstrapped earlier, so it can publish long before
+  # its own dial returns; gating :8645 on that left half the fleet refusing publishes.
+  info "Starting listening endpoint for publish controller"
+  discard gossipSub.startHttpServer(myId)
+
   info "Starting metrics server"
   let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
@@ -238,8 +244,6 @@ proc main {.async.} =
   # Hold connections open until gossipsub traffic takes over
   asyncSpawn pingLoop(switch, pingProtocol)
 
-  info "Starting listening endpoint for publish controller"
-  discard gossipSub.startHttpServer(myId)
 
   await sleepAsync(2.days)
 
