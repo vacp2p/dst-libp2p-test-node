@@ -11,6 +11,7 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#d721f9cb13c36b844957556ac04fecade371b059", # release/v2.2.0
-          # The shadow image's tick-floor patch targets lsquic 0.5.4's layout.
-          "lsquic >= 0.5.4 & < 0.5.5"
+          "https://github.com/vacp2p/nim-libp2p#e1ba778e2cafb9d663b0e5a7ab488118a44c9610", # release/v2.3
+          # v2.3 wants lsquic >= 0.8.1 with an open upper bound; pin it so a new tag
+          # cannot swap the quic stack under a campaign.
+          "lsquic >= 0.8.1 & < 0.8.2"
