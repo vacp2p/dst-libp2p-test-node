@@ -1,5 +1,5 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
-import chronos, chronos/apps/http/httpserver
+import chronos, chronos/apps/http/httpserver, chronos/debugutils
 import std/[random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
@@ -161,6 +161,20 @@ proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
   gossipSub.addValidator([topic], messageValidator)
 
 
+var bootstrapDone = false
+
+proc watchBootstrapStall() {.async.} =
+  ## Nodes that never return from the kad bootstrap dump their pending futures, which
+  ## names the await they are stuck on. Only stuck nodes print, so 1000 pods stay quiet.
+  for round in 1 .. 4:
+    await sleepAsync(150.seconds)
+    if bootstrapDone:
+      return
+    notice "Bootstrap still pending", round = round, pendingFutures = pendingFuturesCount()
+    for line in dumpPendingFutures().splitLines():
+      if line.len > 0:
+        notice "pending future", entry = line
+
 proc main {.async.} =
   randomize()
   let
@@ -234,7 +248,9 @@ proc main {.async.} =
   let bootstraps = (await connectToBootstrap(switch, muxer, service)).valueOr:
     error "Failed to connect to bootstrap", service = service, error = error
     return
+  asyncSpawn watchBootstrapStall()
   await seedBootstraps(kad, bootstraps)
+  bootstrapDone = true
   info "kad-dht discovery active", bootstraps = bootstraps.len
 
   await sleepAsync(5.seconds)
