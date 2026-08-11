@@ -43,7 +43,7 @@ RUN --mount=type=cache,target=/root/.cache/nim nimble c \
     --os:linux --cpu:amd64 --passL:"-static -mmusl" \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
-    -d:chronosFutureTracking \
+    -d:chronosFutureTracking --hints:on \
     --passL:"-static-libgcc -static-libstdc++" \
     main
 

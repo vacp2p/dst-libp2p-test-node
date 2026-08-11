@@ -1,5 +1,5 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
-import chronos, chronos/apps/http/httpserver, chronos/debugutils
+import chronos, chronos/apps/http/httpserver, chronos/debugutils, chronos/config
 import std/[random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
@@ -170,7 +170,8 @@ proc watchBootstrapStall() {.async.} =
     await sleepAsync(150.seconds)
     if bootstrapDone:
       return
-    notice "Bootstrap still pending", round = round, pendingFutures = pendingFuturesCount()
+    notice "Bootstrap still pending", round = round,
+      futureTracking = chronosFutureTracking, pendingFutures = pendingFuturesCount()
     for line in dumpPendingFutures().splitLines():
       if line.len > 0:
         notice "pending future", entry = line
