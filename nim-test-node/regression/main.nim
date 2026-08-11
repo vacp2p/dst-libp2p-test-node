@@ -211,7 +211,7 @@ proc main {.async.} =
   discard gossipSub.startHttpServer(myId)
 
   info "Starting metrics server"
-  let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
+  let metricsServer = await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
     error "Failed to initialize metrics server", err = metricsServer.error
   elif inShadow:
