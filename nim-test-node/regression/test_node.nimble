@@ -11,7 +11,7 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#e1ba778e2cafb9d663b0e5a7ab488118a44c9610", # release/v2.3
+          "https://github.com/vacp2p/nim-libp2p#6e08c69f29ad984c1c23eb945b79ff717d0e356a", # dst/v23-dialer-bound-2929 = release/v2.3 + PR 2929
           # Both ranges are open upstream, so a new tag would swap the quic stack or the
           # async runtime under a campaign. Held where the v2.2.0 runs had them, leaving
           # nim-libp2p as the only variable between the two versions.
