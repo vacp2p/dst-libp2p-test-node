@@ -47,7 +47,8 @@ proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] 
 #Prometheus metrics
 proc startMetricsServer*(
     serverIp: IpAddress, serverPort: Port
-): Result[MetricsHttpServerRef, string] =
+): Future[Result[MetricsHttpServerRef, string]] {.async.} =
+  ## Awaited, not `waitFor`-ed: the only caller is async.
   info "Starting metrics HTTP server", serverIp = $serverIp, serverPort = $serverPort
 
   let metricsServerRes = MetricsHttpServerRef.new($serverIp, serverPort)
@@ -56,7 +57,9 @@ proc startMetricsServer*(
 
   let server = metricsServerRes.value
   try:
-    waitFor server.start()
+    await server.start()
+  except CancelledError as exc:
+    raise exc
   except CatchableError:
     return err("metrics HTTP server start failed: " & getCurrentExceptionMsg())
 
