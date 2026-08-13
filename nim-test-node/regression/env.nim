@@ -26,13 +26,7 @@ let
 
 
 proc listenHost*(): string =
-  ## The interface the pod actually routes out of, not 0.0.0.0.
-  ##
-  ## Listening on 0.0.0.0 makes libp2p announce every local address, loopback first.
-  ## Peers then spend a dial attempt on 127.0.0.1, which reaches the dialling node
-  ## itself. That was free while dials were unbounded; since nim-libp2p bounds a dial
-  ## and shares one deadline across the whole address list, it can exhaust the budget
-  ## before the real address is tried.
+  ## The interface the pod routes out of; 0.0.0.0 would announce loopback too.
   try:
     $getPrimaryIPAddr()
   except CatchableError:
