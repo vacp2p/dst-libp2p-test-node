@@ -48,8 +48,7 @@ proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] 
 proc startMetricsServer*(
     serverIp: IpAddress, serverPort: Port
 ): Future[Result[MetricsHttpServerRef, string]] {.async.} =
-  ## Awaits the server start rather than `waitFor`-ing it: the only caller is async, and
-  ## running the event loop from inside it re-enters the loop.
+  ## Awaited, not `waitFor`-ed: the only caller is async.
   info "Starting metrics HTTP server", serverIp = $serverIp, serverPort = $serverPort
 
   let metricsServerRes = MetricsHttpServerRef.new($serverIp, serverPort)
