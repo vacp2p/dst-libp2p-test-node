@@ -1,4 +1,5 @@
 import strutils, os, osproc
+from std/net import getPrimaryIPAddr, IpAddress, `$`
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
@@ -24,17 +25,32 @@ let
   metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
+proc listenHost*(): string =
+  ## The interface the pod actually routes out of, not 0.0.0.0.
+  ##
+  ## Listening on 0.0.0.0 makes libp2p announce every local address, loopback first.
+  ## Peers then spend a dial attempt on 127.0.0.1, which reaches the dialling node
+  ## itself. That was free while dials were unbounded; since nim-libp2p bounds a dial
+  ## and shares one deadline across the whole address list, it can exhaust the budget
+  ## before the real address is tried.
+  try:
+    $getPrimaryIPAddr()
+  except CatchableError:
+    warn "Could not determine the primary interface, falling back to 0.0.0.0"
+    "0.0.0.0"
+
 proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] =
   let
     hostname = getHostname()
+    listenIp = listenHost()
     myId = try: parseInt(hostname.split('-')[^1])
            except ValueError: 0
     muxer = getEnv("MUXER", "yamux")
     filePath = if inShadow: "../" else: getEnv("FILEPATH", "./")
     address = if muxer.toLowerAscii() == "quic":
-      "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
+      "/ip4/" & listenIp & "/udp/" & $myPort & "/quic-v1"
     else:
-      "/ip4/0.0.0.0/tcp/" & $myPort
+      "/ip4/" & listenIp & "/tcp/" & $myPort
     nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
 
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
