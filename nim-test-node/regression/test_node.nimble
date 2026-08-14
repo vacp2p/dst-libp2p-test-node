@@ -11,7 +11,7 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#4235ca00772ff0ec113a135723893d9c15938837", # dst/v23-admission-diag = 0eb435f8 (the commit p2p gave us) + admission probe logging
+          "https://github.com/vacp2p/nim-libp2p#5bd45be5333269e005153f4d4e43617975a56265", # dst/v23-admission-diag2 = d7ba9db1 (PR 2936 probe-timeout fix) + admission probe logging
           # Both ranges are open upstream, so a new tag would swap the quic stack or the
           # async runtime under a campaign. Held where the v2.2.0 runs had them, leaving
           # nim-libp2p as the only variable between the two versions.
