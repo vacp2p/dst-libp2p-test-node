@@ -11,7 +11,7 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#a4bcf436c9eaa0f35394bf4af293ecbac7267d5c", # dst/v23-kad-admit-on-cold-start = release/v2.3 + PR 2929 + optimistic admission
+          "https://github.com/vacp2p/nim-libp2p#4235ca00772ff0ec113a135723893d9c15938837", # dst/v23-admission-diag = 0eb435f8 (the commit p2p gave us) + admission probe logging
           # Both ranges are open upstream, so a new tag would swap the quic stack or the
           # async runtime under a campaign. Held where the v2.2.0 runs had them, leaving
           # nim-libp2p as the only variable between the two versions.
