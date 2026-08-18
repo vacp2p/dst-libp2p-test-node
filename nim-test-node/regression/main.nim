@@ -190,16 +190,15 @@ proc main {.async.} =
   let switch = builder.build()
 
   # Mount protocols *before* starting the switch (switch.start() starts them, so no
-  # protocol is started manually): GossipSub + ping on normal nodes, kad-dht on all.
-  # The bootstrap is a kad-dht anchor only - it just answers DHT queries.
-  var pingProtocol: Ping
+  # protocol is started manually): ping + kad-dht on all nodes, GossipSub on normal
+  # nodes only. The bootstrap is a kad-dht anchor, but still answers ping keepalives.
+  let pingProtocol = Ping.new(rng = rng)
+  switch.mount(pingProtocol)
   if nodeRole == RoleNormal:
     gossipSub = initializeGossipsub(switch, true, rng)
     configureGossipsubParams(gossipSub)
     subscribGossipsubTopic(gossipSub, "test")
     switch.mount(gossipSub)
-    pingProtocol = Ping.new(rng = rng)
-    switch.mount(pingProtocol)
   let kad = mountKadDht(switch, rng)
 
   await switch.start()
