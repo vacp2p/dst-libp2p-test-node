@@ -47,8 +47,6 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
     messagesChunks.inc(msgId)  # Use msgId instead of timestamp for tracking
     if messagesChunks[msgId] < chunks: return
 
-    echo msgId, " milliseconds: ", delay.inMilliseconds()
-
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
   return ValidationResult.Accept
 
