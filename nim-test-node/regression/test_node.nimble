@@ -11,6 +11,4 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#d721f9cb13c36b844957556ac04fecade371b059", # release/v2.2.0
-          # The shadow image's tick-floor patch targets lsquic 0.5.4's layout.
-          "lsquic >= 0.5.4 & < 0.5.5"
+          "https://github.com/vacp2p/nim-libp2p#5e9fe7cb5a243cce6b0f729d5b4a8635eedb67ad" # v2.3.0 specific commit
