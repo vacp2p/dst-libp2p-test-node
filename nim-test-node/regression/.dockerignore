@@ -2,4 +2,5 @@ config.nims
 nimble.paths
 nimble.develop
 nimbledeps
+nimcache*
 main

@@ -3,10 +3,6 @@ from std/net import getPrimaryIPAddr, IpAddress, `$`
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
-type
-  NodeType* = enum
-    RoleBootstrap, RoleNormal
-
 let
   inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
   httpPublishPort* = Port(8645)
@@ -33,7 +29,7 @@ proc listenHost*(): string =
     warn "Could not determine the primary interface, falling back to 0.0.0.0"
     "0.0.0.0"
 
-proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] =
+proc getPeerDetails*(): Result[(int, string, string, string), string] =
   let
     hostname = getHostname()
     listenIp = listenHost()
@@ -45,14 +41,13 @@ proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] 
       "/ip4/" & listenIp & "/udp/" & $myPort & "/quic-v1"
     else:
       "/ip4/" & listenIp & "/tcp/" & $myPort
-    nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
 
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
     return err("Unknown muxer type : " & muxer)
 
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, jitterStepMs = startupJitterStepMs, role = nodeRole
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, jitterStepMs = startupJitterStepMs
 
-  return ok((myId, muxer, filePath, address, nodeRole))
+  return ok((myId, muxer, filePath, address))
 
 #Prometheus metrics
 proc startMetricsServer*(
