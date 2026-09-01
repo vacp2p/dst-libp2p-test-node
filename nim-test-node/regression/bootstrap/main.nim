@@ -14,7 +14,7 @@ proc main {.async.} =
     (myId, muxer, _, address) =
       getPeerDetails().valueOr:
         error "Error reading peer settings ", err = error
-        return
+        quit(1)
 
   let switch = buildSwitch(muxer, address)
   discard mountBaseProtocols(switch, rng)
