@@ -21,7 +21,9 @@ proc startAdvertisingServices*(
     return
 
   for service in services:
-    disco.startAdvertising(service)
+    disco.startAdvertising(service).isOkOr:
+      warn "Failed to advertise", service = service.id, error = error
+      continue
     notice "Advertising service",
       service = service.id,
       dataLen = service.serviceDataLen()
