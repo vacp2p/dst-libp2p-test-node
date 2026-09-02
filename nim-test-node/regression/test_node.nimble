@@ -1,6 +1,7 @@
 mode = ScriptMode.Verbose
 
 bin = @["node/main", "bootstrap/main"]
+namedBin = {"node/main": "regression-node", "bootstrap/main": "regression-bootstrap"}.toTable()
 
 packageName   = "test_node"
 version       = "0.1.0"
