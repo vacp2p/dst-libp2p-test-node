@@ -1,4 +1,4 @@
-FROM nimlang/nim:latest
+FROM nimlang/nim:2.2.10
 
 WORKDIR /node
 
