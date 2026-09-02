@@ -33,6 +33,6 @@ proc main {.async.} =
   info "Bootstrap node ready (kad-dht anchor)",
     peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
 
-  await sleepAsync(2.days)
+  await waitSignal(SIGINT, SIGTERM)
 
 waitFor(main())
