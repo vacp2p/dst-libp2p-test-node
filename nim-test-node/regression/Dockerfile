@@ -14,8 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN git config --global http.version HTTP/1.1
 
-COPY test_node.nimble .
-RUN nimble refresh && nimble install -dy
+RUN nimble install -y 'nimble@#b1b0690e5028244c04f7bb8daafb5d9e37d31b62'
+ENV PATH="/root/.nimble/bin:${PATH}"
+
+COPY test_node.nimble nimble.lock config.nims ./
+RUN nimble refresh && nimble setup
 
 COPY . .
 
