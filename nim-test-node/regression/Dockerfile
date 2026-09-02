@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git config --global http.sslVerify false
+RUN git config --global http.version HTTP/1.1
 
 COPY test_node.nimble .
 RUN nimble refresh && nimble install -dy
