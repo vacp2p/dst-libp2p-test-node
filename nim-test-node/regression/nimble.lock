@@ -11,6 +11,18 @@
         "sha1": "17ec440fdb89f8903db29a17898af590087d2b64"
       }
     },
+    "libbacktrace": {
+      "version": "0.2.0",
+      "vcsRevision": "95f1bbfe696b4b5c768f7cc52c2597cd782f1e7d",
+      "url": "https://github.com/status-im/nim-libbacktrace",
+      "downloadMethod": "git",
+      "dependencies": [
+        "nim"
+      ],
+      "checksums": {
+        "sha1": "4f89a505ec8bb97a5925e0b6537f2c32f817d512"
+      }
+    },
     "unittest2": {
       "version": "0.2.5",
       "vcsRevision": "26f2ef3ae0ec72a2a75bfe557e02e88f6a31c189",
@@ -319,12 +331,13 @@
       }
     },
     "libp2p": {
-      "version": "2.1.6",
-      "vcsRevision": "7d779190d823567c83b6b11348ea11034951d325",
+      "version": "2.2.1",
+      "vcsRevision": "95d3925db8a3d093dd86647165650472a5342b81",
       "url": "https://github.com/vacp2p/nim-libp2p",
       "downloadMethod": "git",
       "dependencies": [
         "nim",
+        "libbacktrace",
         "nimcrypto",
         "bearssl",
         "boringssl",
@@ -342,7 +355,7 @@
         "nat_traversal"
       ],
       "checksums": {
-        "sha1": "1987f323de6d7a57b8b1ce439e83018d4e8a1a0c"
+        "sha1": "9c0bfc6ee9e01bab0f46b9e1fd559de0f29f9724"
       }
     }
   },
