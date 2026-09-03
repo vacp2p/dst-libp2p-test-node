@@ -12,5 +12,5 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "libp2p == 2.2.1",
-          "lsquic == 0.5.4"
+          "libp2p == 2.3.1",
+          "lsquic == 0.8.1"
