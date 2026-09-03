@@ -111,3 +111,20 @@ re-resolves deps before compiling, so the Dockerfile patches the package cache
 (`~/.nimble/pkgcache`, what nimble copies from) rather than the installed copy.
 The build asserts it patched something and greps the binary for
 `LSQUIC_TICK_FLOOR_US`, so a stock build or a stale pin fails loudly.
+
+
+## Images:
+- v2.0.0
+  - Node: 
+    - `albertodst/regression-node-amd64:v2.0.0`
+    - `albertodst/regression-node-arm64:v2.0.0`
+  - Bootstrap: 
+    - `albertodst/regression-bootstrap-amd64:v2.0.0`
+    - `albertodst/regression-bootstrap-arm64:v2.0.0`
+- v2.1.6
+  - Node:
+    - `albertodst/regression-node-amd64:v2.1.6`
+    - `albertodst/regression-node-arm64:v2.1.6`
+  - Bootstrap:
+    - `albertodst/regression-bootstrap-amd64:v2.1.6`
+    - `albertodst/regression-bootstrap-arm64:v2.1.6`
