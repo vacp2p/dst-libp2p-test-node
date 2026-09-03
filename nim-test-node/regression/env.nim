@@ -1,10 +1,7 @@
 import strutils, os, osproc
+from std/net import getPrimaryIPAddr, IpAddress, `$`
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
-
-type
-  NodeType* = enum
-    RoleBootstrap, RoleNormal
 
 let
   inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
@@ -24,30 +21,38 @@ let
   metricsIntervalS* = parseInt(getEnv("METRICS_INTERVAL_S", "300"))  #storeMetrics scrape interval (s); short for shadow
 
 
-proc getPeerDetails*(): Result[(int, string, string, string, NodeType), string] =
+proc listenHost*(): string =
+  ## The interface the pod routes out of; 0.0.0.0 would announce loopback too.
+  try:
+    $getPrimaryIPAddr()
+  except CatchableError:
+    warn "Could not determine the primary interface, falling back to 0.0.0.0"
+    "0.0.0.0"
+
+proc getPeerDetails*(): Result[(int, string, string, string), string] =
   let
     hostname = getHostname()
+    listenIp = listenHost()
     myId = try: parseInt(hostname.split('-')[^1])
            except ValueError: 0
     muxer = getEnv("MUXER", "yamux")
     filePath = if inShadow: "../" else: getEnv("FILEPATH", "./")
     address = if muxer.toLowerAscii() == "quic":
-      "/ip4/0.0.0.0/udp/" & $myPort & "/quic-v1"
+      "/ip4/" & listenIp & "/udp/" & $myPort & "/quic-v1"
     else:
-      "/ip4/0.0.0.0/tcp/" & $myPort
-    nodeRole = parseEnum[NodeType](getEnv("NODE_ROLE", "RoleNormal"))
+      "/ip4/" & listenIp & "/tcp/" & $myPort
 
   if muxer.toLowerAscii() notin ["quic", "yamux", "mplex"]:
     return err("Unknown muxer type : " & muxer)
 
-  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, jitterStepMs = startupJitterStepMs, role = nodeRole
+  info "Host info ", hostname = hostname, peer = myId, muxer = muxer, inShadow = inShadow, address = address, jitterStepMs = startupJitterStepMs
 
-  return ok((myId, muxer, filePath, address, nodeRole))
+  return ok((myId, muxer, filePath, address))
 
 #Prometheus metrics
 proc startMetricsServer*(
     serverIp: IpAddress, serverPort: Port
-): Result[MetricsHttpServerRef, string] =
+): Future[Result[MetricsHttpServerRef, string]] {.async.} =
   info "Starting metrics HTTP server", serverIp = $serverIp, serverPort = $serverPort
 
   let metricsServerRes = MetricsHttpServerRef.new($serverIp, serverPort)
@@ -56,7 +61,7 @@ proc startMetricsServer*(
 
   let server = metricsServerRes.value
   try:
-    waitFor server.start()
+    await server.start()
   except CatchableError:
     return err("metrics HTTP server start failed: " & getCurrentExceptionMsg())
 

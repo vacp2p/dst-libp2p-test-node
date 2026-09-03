@@ -1,7 +1,7 @@
 # Dynamic-linked nim test-node, for the Shadow simulator.
 #
-# Mirrors Dockerfile_amd64 but DROPS the static linker flags
-# (`--passL:"-static -mmusl"` and `--passL:"-static-libgcc -static-libstdc++"`).
+# Mirrors Dockerfile but DROPS the static linker flags (`--passL:"-static
+# -mmusl"` and `--passL:"-static-libgcc -static-libstdc++"`).
 #
 # Why: Shadow's syscall interposer is LD_PRELOAD-based and only hooks
 # dynamically linked ELFs. A statically linked nim binary fails at startup with
@@ -12,9 +12,12 @@
 
 FROM debian:bookworm-slim AS builder
 
+ARG NODE_BINARY=node
+ARG NIM_VERSION=2.2.6
+
 WORKDIR /node
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git build-essential ca-certificates \
     libssl3 iproute2 procps xz-utils \
     && rm -rf /var/lib/apt/lists/* \
@@ -22,12 +25,13 @@ RUN apt-get update && apt-get install -y \
 
 RUN git config --global http.sslVerify false
 
-RUN curl https://nim-lang.org/download/nim-2.2.6-linux_x64.tar.xz -o /tmp/nim.tar.xz \
+RUN curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.xz" -o /tmp/nim.tar.xz \
     && tar -xf /tmp/nim.tar.xz -C /tmp \
-    && cp -r /tmp/nim-2.2.6/* /usr/local \
-    && rm -rf /usr/local/nim* && mv /tmp/nim-2.2.6 /usr/local/nim-2.2.6 \
-    && ln -sf /usr/local/nim-2.2.6/bin/nim /usr/local/bin/nim \
-    && ln -sf /usr/local/nim-2.2.6/bin/nimble /usr/local/bin/nimble
+    && cp -r "/tmp/nim-${NIM_VERSION}/"* /usr/local \
+    && rm -rf /usr/local/nim* \
+    && mv "/tmp/nim-${NIM_VERSION}" "/usr/local/nim-${NIM_VERSION}" \
+    && ln -sf "/usr/local/nim-${NIM_VERSION}/bin/nim" /usr/local/bin/nim \
+    && ln -sf "/usr/local/nim-${NIM_VERSION}/bin/nimble" /usr/local/bin/nimble
 
 COPY . .
 
@@ -48,11 +52,13 @@ RUN set -eu; \
     [ "$patched" -gt 0 ] || { echo "no lsquic package found to patch"; exit 1; }
 
 # Dynamic link: no `-static`, no `-mmusl`, no `-static-libgcc/-libstdc++`.
+RUN test "${NODE_BINARY}" = "node" -o "${NODE_BINARY}" = "bootstrap"
 RUN nimble c \
     --os:linux --cpu:amd64 \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
-    main \
+    --out:/node/main \
+    "${NODE_BINARY}/main.nim" \
     && chmod +x /node/main \
     && (grep -l tickFloorUs /root/.nimble/pkgs2/lsquic-*/lsquic/context/context.nim \
         || echo "patch WIPED by nimble re-resolve") \

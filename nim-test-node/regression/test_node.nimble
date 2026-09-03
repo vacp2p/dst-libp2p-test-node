@@ -1,6 +1,7 @@
 mode = ScriptMode.Verbose
 
-bin = @["main"]
+bin = @["node/main", "bootstrap/main"]
+namedBin = {"node/main": "regression-node", "bootstrap/main": "regression-bootstrap"}.toTable()
 
 packageName   = "test_node"
 version       = "0.1.0"
@@ -11,6 +12,5 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#d721f9cb13c36b844957556ac04fecade371b059", # release/v2.2.0
-          # The shadow image's tick-floor patch targets lsquic 0.5.4's layout.
-          "lsquic >= 0.5.4 & < 0.5.5"
+          "libp2p == 2.0.0",
+          "lsquic == 0.4.1"

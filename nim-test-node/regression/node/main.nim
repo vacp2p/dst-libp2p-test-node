@@ -1,16 +1,18 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
 import std/[random, hashes]
-import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
+import libp2p
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
 import math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
-import env
-import ping_utils
-import kad_utils
+import ../env
+import ../ping_utils
+import ../kad_utils
+import ../node_setup
+import ../shutdown_utils
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -46,8 +48,6 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
 
     messagesChunks.inc(msgId)  # Use msgId instead of timestamp for tracking
     if messagesChunks[msgId] < chunks: return
-
-    echo msgId, " milliseconds: ", delay.inMilliseconds()
 
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
   return ValidationResult.Accept
@@ -165,42 +165,18 @@ proc main {.async.} =
   randomize()
   let
     rng = libp2p.newRng()
-    (myId, muxer, filePath, address, nodeRole) =
+    (myId, muxer, _, address) =
       getPeerDetails().valueOr:
         error "Error reading peer settings ",  err = error
         return
-  var
-    gossipSub: GossipSub
-    builder = SwitchBuilder
-      .new()
-      .withNoise()
-      .withAddress(MultiAddress.init(address).tryGet())
-      .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
+  let switch = buildSwitch(muxer, address)
 
-  case muxer.toLowerAscii()
-  of "quic":
-    builder = builder.withQuicTransport()
-  of "yamux":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-              .withYamux()
-  of "mplex":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-              .withMplex()
-
-  let switch = builder.build()
-
-  # Mount protocols *before* starting the switch (switch.start() starts them, so no
-  # protocol is started manually): GossipSub + ping on normal nodes, kad-dht on all.
-  # The bootstrap is a kad-dht anchor only - it just answers DHT queries.
-  var pingProtocol: Ping
-  if nodeRole == RoleNormal:
-    gossipSub = initializeGossipsub(switch, true, rng)
-    configureGossipsubParams(gossipSub)
-    subscribGossipsubTopic(gossipSub, "test")
-    switch.mount(gossipSub)
-    pingProtocol = Ping.new(rng = rng)
-    switch.mount(pingProtocol)
-  let kad = mountKadDht(switch, rng)
+  # Mount protocols before starting the switch; switch.start() starts mounted protocols.
+  let (pingProtocol, kad) = mountBaseProtocols(switch, rng)
+  let gossipSub = initializeGossipsub(switch, true, rng)
+  configureGossipsubParams(gossipSub)
+  subscribGossipsubTopic(gossipSub, "test")
+  switch.mount(gossipSub)
 
   await switch.start()
 
@@ -211,7 +187,7 @@ proc main {.async.} =
   discard gossipSub.startHttpServer(myId)
 
   info "Starting metrics server"
-  let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
+  let metricsServer = await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
     error "Failed to initialize metrics server", err = metricsServer.error
   elif inShadow:
@@ -220,13 +196,7 @@ proc main {.async.} =
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
 
-  if nodeRole == RoleBootstrap:
-    info "Bootstrap node ready (kad-dht anchor)",
-      peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
-    await sleepAsync(2.days)
-    return
-
-  # Normal node: stagger the bootstrap dial by pod index (a small per-pod delay) so
+  # Stagger the bootstrap dial by pod index (a small per-pod delay) so
   # 1000 nodes don't stampede the bootstrap at once, then seed its peers into the
   # routing table and do one bootstrap round to populate it.
   await sleepAsync((myId * startupJitterStepMs).milliseconds)
@@ -244,7 +214,6 @@ proc main {.async.} =
   # Hold connections open until gossipsub traffic takes over
   asyncSpawn pingLoop(switch, pingProtocol)
 
-
-  await sleepAsync(2.days)
+  await waitShutdownSignal()
 
 waitFor(main())
