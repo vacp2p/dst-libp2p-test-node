@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN git config --global http.version HTTP/1.1
 
-RUN nimble install -y 'nimble@#b1b0690e5028244c04f7bb8daafb5d9e37d31b62'
+# fix #1837: honor locked package URLs during installation (#1838)
+RUN nimble install -y 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
 ENV PATH="/root/.nimble/bin:${PATH}"
 
 COPY test_node.nimble nimble.lock config.nims ./
