@@ -11,18 +11,6 @@
         "sha1": "17ec440fdb89f8903db29a17898af590087d2b64"
       }
     },
-    "libbacktrace": {
-      "version": "0.2.0",
-      "vcsRevision": "95f1bbfe696b4b5c768f7cc52c2597cd782f1e7d",
-      "url": "https://github.com/status-im/nim-libbacktrace",
-      "downloadMethod": "git",
-      "dependencies": [
-        "nim"
-      ],
-      "checksums": {
-        "sha1": "4f89a505ec8bb97a5925e0b6537f2c32f817d512"
-      }
-    },
     "unittest2": {
       "version": "0.2.5",
       "vcsRevision": "26f2ef3ae0ec72a2a75bfe557e02e88f6a31c189",
@@ -70,19 +58,6 @@
       ],
       "checksums": {
         "sha1": "a9c011f74bc9ed5c91103917b9f382b12e82a9e7"
-      }
-    },
-    "nat_traversal": {
-      "version": "0.0.1",
-      "vcsRevision": "860e18c37667b5dd005b94c63264560c35d88004",
-      "url": "https://github.com/status-im/nim-nat-traversal",
-      "downloadMethod": "git",
-      "dependencies": [
-        "nim",
-        "results"
-      ],
-      "checksums": {
-        "sha1": "1a376d3e710590ef2c48748a546369755f0a7c97"
       }
     },
     "stew": {
@@ -172,6 +147,21 @@
       ],
       "checksums": {
         "sha1": "f6dc5f12e37410e58a0649515520aee0a73ab0b2"
+      }
+    },
+    "libplum": {
+      "version": "#v0.6.3",
+      "vcsRevision": "189a4984d15f0c60780d6ea5a2ab46bbf6a350f8",
+      "url": "https://github.com/logos-storage/nim-libplum",
+      "downloadMethod": "git",
+      "dependencies": [
+        "nim",
+        "results",
+        "chronos",
+        "unittest2"
+      ],
+      "checksums": {
+        "sha1": "300d388808ed6e737bf9c3de857d32698d88727a"
       }
     },
     "faststreams": {
@@ -312,8 +302,8 @@
       }
     },
     "lsquic": {
-      "version": "0.5.4",
-      "vcsRevision": "186ec5b98747bdeaa98d3460b9e71823cac3b57a",
+      "version": "0.8.1",
+      "vcsRevision": "c9acf6a37347b24ba158f53ff4851e68245950b7",
       "url": "https://github.com/vacp2p/nim-lsquic",
       "downloadMethod": "git",
       "dependencies": [
@@ -327,17 +317,16 @@
         "boringssl"
       ],
       "checksums": {
-        "sha1": "e5e5f3f8739e68fc468d1c6bd7b40e42c282a3da"
+        "sha1": "94e84841563554409861fbe7dd3047c6ce05f1a6"
       }
     },
     "libp2p": {
-      "version": "2.2.1",
-      "vcsRevision": "95d3925db8a3d093dd86647165650472a5342b81",
+      "version": "2.3.1",
+      "vcsRevision": "391e403cc274ab8623fb1106f2c2827e09c6c89f",
       "url": "https://github.com/vacp2p/nim-libp2p",
       "downloadMethod": "git",
       "dependencies": [
         "nim",
-        "libbacktrace",
         "nimcrypto",
         "bearssl",
         "boringssl",
@@ -346,16 +335,16 @@
         "metrics",
         "secp256k1",
         "stew",
-        "unittest2",
         "results",
         "serialization",
+        "json_serialization",
         "lsquic",
         "protobuf_serialization",
         "websock",
-        "nat_traversal"
+        "libplum"
       ],
       "checksums": {
-        "sha1": "9c0bfc6ee9e01bab0f46b9e1fd559de0f29f9724"
+        "sha1": "62b44f7fdcdb170f83cc8e03e6da2f675b4deaf7"
       }
     }
   },
