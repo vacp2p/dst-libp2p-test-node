@@ -8,6 +8,20 @@ import libp2p
 import ../env
 import ../node_setup
 
+proc waitShutdownSignal() {.async.} =
+  let
+    sigIntFut = waitSignal(SIGINT)
+    sigTermFut = waitSignal(SIGTERM)
+
+  try:
+    let completedSignalFut = await one(sigIntFut, sigTermFut)
+    await completedSignalFut
+  finally:
+    if not sigIntFut.finished():
+      await noCancel(sigIntFut.cancelAndWait())
+    if not sigTermFut.finished():
+      await noCancel(sigTermFut.cancelAndWait())
+
 proc main {.async.} =
   let
     rng = libp2p.newRng()
@@ -33,6 +47,6 @@ proc main {.async.} =
   info "Bootstrap node ready (kad-dht anchor)",
     peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
 
-  await waitSignal(SIGINT, SIGTERM)
+  await waitShutdownSignal()
 
 waitFor(main())
