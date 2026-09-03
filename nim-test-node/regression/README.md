@@ -128,3 +128,10 @@ The build asserts it patched something and greps the binary for
   - Bootstrap:
     - `albertodst/regression-bootstrap-amd64:v2.1.6`
     - `albertodst/regression-bootstrap-arm64:v2.1.6`
+- v2.2.1
+  - Node:
+    - `albertodst/regression-node-amd64:v2.2.1`
+    - `albertodst/regression-node-arm64:v2.2.1`
+  - Bootstrap:
+    - `albertodst/regression-bootstrap-amd64:v2.2.1`
+    - `albertodst/regression-bootstrap-arm64:v2.2.1`
