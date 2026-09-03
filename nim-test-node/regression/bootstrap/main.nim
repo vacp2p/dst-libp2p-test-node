@@ -7,20 +7,7 @@ import libp2p
 
 import ../env
 import ../node_setup
-
-proc waitShutdownSignal() {.async.} =
-  let
-    sigIntFut = waitSignal(SIGINT)
-    sigTermFut = waitSignal(SIGTERM)
-
-  try:
-    let completedSignalFut = await one(sigIntFut, sigTermFut)
-    await completedSignalFut
-  finally:
-    if not sigIntFut.finished():
-      await noCancel(sigIntFut.cancelAndWait())
-    if not sigTermFut.finished():
-      await noCancel(sigTermFut.cancelAndWait())
+import ../shutdown_utils
 
 proc main {.async.} =
   let

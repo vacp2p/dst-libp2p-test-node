@@ -12,6 +12,7 @@ import ../env
 import ../ping_utils
 import ../kad_utils
 import ../node_setup
+import ../shutdown_utils
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -213,6 +214,6 @@ proc main {.async.} =
   # Hold connections open until gossipsub traffic takes over
   asyncSpawn pingLoop(switch, pingProtocol)
 
-  await sleepAsync(2.days)
+  await waitShutdownSignal()
 
 waitFor(main())
