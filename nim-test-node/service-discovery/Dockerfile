@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim AS build
+FROM nimlang/nim:2.2.10 AS build
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -10,9 +10,9 @@ RUN apt-get update && \
       libssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
+# fix #1837: honor locked package URLs during installation (#1838)
+RUN nimble install -y 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
 ENV PATH="/root/.nimble/bin:${PATH}"
-RUN git config --global http.sslVerify false
 
 WORKDIR /node
 COPY test_node.nimble .
