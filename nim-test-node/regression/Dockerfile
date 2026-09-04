@@ -1,4 +1,4 @@
-FROM nimlang/nim:2.2.10
+FROM nimlang/nim:2.2.10 AS builder
 
 WORKDIR /node
 
@@ -30,6 +30,23 @@ RUN nimble c \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     --out:/node/main \
     "${NODE_BINARY}/main.nim"
+
+FROM debian:bookworm-slim AS runtime
+
+WORKDIR /node
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    libssl3 \
+    libgcc-s1 \
+    libstdc++6 \
+    iproute2 \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+COPY --from=builder /node/main /node/main
 
 EXPOSE 5000 8008 8645
 
