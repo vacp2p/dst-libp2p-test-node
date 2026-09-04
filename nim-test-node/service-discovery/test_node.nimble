@@ -8,5 +8,4 @@ license       = "MIT"
 skipDirs      = @[]
 
 requires "nim >= 2.2.4",
-          "nimcrypto 0.6.4",
           "https://github.com/vacp2p/nim-libp2p#v2.3.0" # v2.3.0 tag
