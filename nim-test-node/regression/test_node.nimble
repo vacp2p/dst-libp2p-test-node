@@ -11,5 +11,4 @@ license       = "MIT"
 skipDirs      = @[]
 
 requires "nim >= 2.2.0",
-          "libp2p == 2.3.1",
-          "lsquic == 0.8.1"
+          "libp2p == 2.4.0"
