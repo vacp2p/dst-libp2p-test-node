@@ -1,6 +1,6 @@
 diff -ruN orig/lsquic/context/client.nim patched/lsquic/context/client.nim
---- orig/lsquic/context/client.nim	2026-09-16 10:12:16
-+++ patched/lsquic/context/client.nim	2026-09-16 10:12:16
+--- orig/lsquic/context/client.nim	2026-09-16 11:11:51
++++ patched/lsquic/context/client.nim	2026-09-16 11:11:51
 @@ -141,6 +141,8 @@
    ctx.settings.es_max_sfcw = 2 * 1024 * 1024
    ctx.settings.es_init_max_stream_data_bidi_local = 1024 * 1024
@@ -11,8 +11,8 @@ diff -ruN orig/lsquic/context/client.nim patched/lsquic/context/client.nim
    ctx.stream_if = struct_lsquic_stream_if(
      on_new_conn: onNewConn,
 diff -ruN orig/lsquic/context/context.nim patched/lsquic/context/context.nim
---- orig/lsquic/context/context.nim	2026-09-16 10:12:16
-+++ patched/lsquic/context/context.nim	2026-09-16 10:12:16
+--- orig/lsquic/context/context.nim	2026-09-16 11:11:51
++++ patched/lsquic/context/context.nim	2026-09-16 11:11:51
 @@ -1,7 +1,7 @@
  # SPDX-License-Identifier: Apache-2.0 OR MIT
  # Copyright (c) Status Research & Development GmbH 
@@ -67,9 +67,21 @@ diff -ruN orig/lsquic/context/context.nim patched/lsquic/context/context.nim
  
  proc stop*(ctx: QuicContext) {.raises: [].} =
    ## Quiesce the context before closing the UDP transport so late datagrams and
+diff -ruN orig/lsquic/context/io.nim patched/lsquic/context/io.nim
+--- orig/lsquic/context/io.nim	2026-09-16 11:11:51
++++ patched/lsquic/context/io.nim	2026-09-16 11:11:51
+@@ -137,7 +137,7 @@
+ 
+   let specsArr = cast[ptr UncheckedArray[struct_lsquic_out_spec]](specs)
+ 
+-  when defined(linux):
++  when defined(linux) and not defined(lsquic_no_sendmmsg):
+     var
+       destStorages {.noinit.}: array[SendmmsgBatchSize, Sockaddr_storage]
+       msgs {.noinit.}: array[SendmmsgBatchSize, MMsgHdr]
 diff -ruN orig/lsquic/context/server.nim patched/lsquic/context/server.nim
---- orig/lsquic/context/server.nim	2026-09-16 10:12:16
-+++ patched/lsquic/context/server.nim	2026-09-16 10:12:16
+--- orig/lsquic/context/server.nim	2026-09-16 11:11:51
++++ patched/lsquic/context/server.nim	2026-09-16 11:11:51
 @@ -75,6 +75,8 @@
    ctx.settings.es_max_sfcw = 1 * 1024 * 1024
    ctx.settings.es_init_max_stream_data_bidi_local = 1024 * 1024

@@ -34,7 +34,8 @@ COPY . .
 RUN nimble refresh
 RUN nimble install -dy --verbose --useSystemNim
 
-# Floor lsquic's engine tick re-arms so Shadow can advance simulated time.
+# Floor lsquic's engine tick re-arms so Shadow can advance simulated time, and let the
+# build opt out of sendmmsg, which Shadow does not implement (-d:lsquic_no_sendmmsg).
 # Gated by LSQUIC_TICK_FLOOR_US (unset/0 = stock). See README.md.
 COPY lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
 RUN set -eu; \
@@ -52,7 +53,7 @@ RUN nimble c --useSystemNim \
     --os:linux --cpu:amd64 \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
-    -d:chronosFutureTracking \
+    -d:chronosFutureTracking -d:lsquic_no_sendmmsg \
     main \
     && chmod +x /node/main \
     && (grep -l tickFloorUs /root/.nimble/pkgs2/lsquic-*/lsquic/context/context.nim \
