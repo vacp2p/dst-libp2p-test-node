@@ -1,7 +1,7 @@
 import strutils, os, osproc
 from std/net import getPrimaryIPAddr, IpAddress, `$`
 import chronos, metrics/chronos_httpserver, chronicles
-from nativesockets import getHostname
+from nativesockets import getHostname, getHostByName
 
 type
   NodeType* = enum
@@ -33,6 +33,15 @@ proc listenHost*(): string =
   ## itself. That was free while dials were unbounded; since nim-libp2p bounds a dial
   ## and shares one deadline across the whole address list, it can exhaust the budget
   ## before the real address is tried.
+  if inShadow:
+    # Shadow has no default route to probe and does not expand a 0.0.0.0 listen into a
+    # routable address; the host's own name resolves to its assigned IP.
+    try:
+      for ip in getHostByName(getHostname()).addrList:
+        if not ip.startsWith("127.") and ip != "0.0.0.0":
+          return ip
+    except CatchableError as e:
+      warn "Could not resolve own hostname in Shadow", error = e.msg
   try:
     $getPrimaryIPAddr()
   except CatchableError:
