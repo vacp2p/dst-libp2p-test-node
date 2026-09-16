@@ -16,4 +16,8 @@ requires "nim >= 2.2.0",
           # async runtime under a campaign. lsquic held at the release's own bump (0.9.0),
           # chronos where the v2.2.0 and v2.3.0 runs had it.
           "lsquic >= 0.9.0 & < 0.9.1",
+          # nim-libp2p wants boringssl >= 0.0.11. Nimble walks the tags, and switching the
+          # boringssl submodule between tags fails in the build container, which makes it
+          # drop every tag in range. Pinning the commit skips the tag walk.
+          "https://github.com/vacp2p/nim-boringssl#fbf9c2762241be3f004d45b9a32b7bfd6ea136a8", # v0.0.13
           "chronos >= 4.2.4 & < 4.3.0"
