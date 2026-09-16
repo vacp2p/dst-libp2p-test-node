@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-RUN git config --global http.sslVerify false && git config --global core.fileMode false
+RUN git config --global http.sslVerify false
 
 RUN curl https://nim-lang.org/download/nim-2.2.6-linux_x64.tar.xz -o /tmp/nim.tar.xz \
     && tar -xf /tmp/nim.tar.xz -C /tmp \
@@ -31,8 +31,12 @@ RUN curl https://nim-lang.org/download/nim-2.2.6-linux_x64.tar.xz -o /tmp/nim.ta
 
 COPY . .
 
+# Newer nimble: the 2.2.6 one cannot read nim-boringssl tags and drops the whole range.
+RUN nimble install -y 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
+ENV PATH="/root/.nimble/bin:${PATH}"
+RUN nimble --version
 RUN nimble refresh
-RUN nimble install -dy --verbose
+RUN nimble install -dy --verbose --useSystemNim
 
 # Floor lsquic's engine tick re-arms so Shadow can advance simulated time.
 # Gated by LSQUIC_TICK_FLOOR_US (unset/0 = stock). See README.md.
@@ -48,7 +52,7 @@ RUN set -eu; \
     [ "$patched" -gt 0 ] || { echo "no lsquic package found to patch"; exit 1; }
 
 # Dynamic link: no `-static`, no `-mmusl`, no `-static-libgcc/-libstdc++`.
-RUN nimble c \
+RUN nimble c --useSystemNim \
     --os:linux --cpu:amd64 \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
