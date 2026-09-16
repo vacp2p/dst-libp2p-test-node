@@ -10,31 +10,27 @@
 # Build via kaniko on a lab worker (see shadow/kaniko-build-test-node-job.yaml).
 # Pushes to radiken/dst-test-node-shadow:latest.
 
-FROM debian:bookworm-slim AS builder
+FROM nimlang/nim:2.2.10 AS builder
+
+ARG NODE_BINARY=node
 
 WORKDIR /node
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git build-essential ca-certificates \
-    libssl3 iproute2 procps xz-utils \
+    libssl3 iproute2 procps \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-RUN git config --global http.sslVerify false
+RUN git config --global http.sslVerify false && git config --global http.version HTTP/1.1
 
-RUN curl https://nim-lang.org/download/nim-2.2.6-linux_x64.tar.xz -o /tmp/nim.tar.xz \
-    && tar -xf /tmp/nim.tar.xz -C /tmp \
-    && cp -r /tmp/nim-2.2.6/* /usr/local \
-    && rm -rf /usr/local/nim* && mv /tmp/nim-2.2.6 /usr/local/nim-2.2.6 \
-    && ln -sf /usr/local/nim-2.2.6/bin/nim /usr/local/bin/nim \
-    && ln -sf /usr/local/nim-2.2.6/bin/nimble /usr/local/bin/nimble
+# Newer nimble: the bundled one cannot read nim-boringssl tags and drops the whole range.
+RUN nimble install -y 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
+ENV PATH="/root/.nimble/bin:${PATH}"
+RUN nim --version && nimble --version
 
 COPY . .
 
-# Newer nimble: the 2.2.6 one cannot read nim-boringssl tags and drops the whole range.
-RUN nimble install -y 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
-ENV PATH="/root/.nimble/bin:${PATH}"
-RUN nimble --version
 RUN nimble refresh
 RUN nimble install -dy --verbose --useSystemNim
 
