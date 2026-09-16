@@ -52,6 +52,7 @@ RUN nimble c --useSystemNim \
     --os:linux --cpu:amd64 \
     -d:chronicles_colors=None --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
+    -d:chronosFutureTracking \
     main \
     && chmod +x /node/main \
     && (grep -l tickFloorUs /root/.nimble/pkgs2/lsquic-*/lsquic/context/context.nim \
