@@ -11,9 +11,9 @@ skipDirs      = @[]
 
 requires "nim >= 2.2.0",
           "nimcrypto 0.6.4",
-          "https://github.com/vacp2p/nim-libp2p#d7ba9db153c99dc04d2802994ed9afb7e5872297", # their v2.3.0 commit as given, stock, no patches
+          "https://github.com/vacp2p/nim-libp2p#7edd055a6d10f5e839342f00af091a7665cd22c3", # release/v2.4 head (v2.4.0 draft release target), stock, no patches
           # Both ranges are open upstream, so a new tag would swap the quic stack or the
-          # async runtime under a campaign. Held where the v2.2.0 runs had them, leaving
-          # nim-libp2p as the only variable between the two versions.
-          "lsquic >= 0.8.1 & < 0.8.2",
+          # async runtime under a campaign. lsquic held at the release's own bump (0.9.0),
+          # chronos where the v2.2.0 and v2.3.0 runs had it.
+          "lsquic >= 0.9.0 & < 0.9.1",
           "chronos >= 4.2.4 & < 4.3.0"
