@@ -190,7 +190,19 @@ proc main {.async.} =
       .new()
       .withNoise()
       .withAddress(MultiAddress.init(address).tryGet())
-      .withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
+  let
+    maxIn = parseInt(getEnv("MAXIN", "0"))
+    maxOut = parseInt(getEnv("MAXOUT", "0"))
+    lowWater = parseInt(getEnv("WATERMARK_LOW", "0"))
+    highWater = parseInt(getEnv("WATERMARK_HIGH", "0"))
+  if maxIn > 0 and maxOut > 0:
+    builder = builder.withMaxInOut(maxIn, maxOut)
+  else:
+    builder = builder.withMaxConnections(parseInt(getEnv("MAXCONNECTIONS", "250")))
+  if lowWater > 0 and highWater > lowWater:
+    builder = builder.withWatermarkPolicy(
+      lowWater, highWater, parseInt(getEnv("WATERMARK_GRACE_S", "60")).seconds
+    )
 
   case muxer.toLowerAscii()
   of "quic":
