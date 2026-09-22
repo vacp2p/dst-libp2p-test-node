@@ -1,5 +1,6 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
+import chronicles
 import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
@@ -9,6 +10,9 @@ import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from times import getTime, toUnixFloat, `-`, initTime, `$`, inMilliseconds, Time
 from nativesockets import getHostname
+
+logScope:
+  topics = "dst"
 
 
 template toUnixNanoseconds(t: times.Time): int64 =
@@ -414,7 +418,7 @@ proc main {.async.} =
   let
     rng = libp2p.newRng()
     (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
-      error "Error reading peer settings ",  err = error
+      error "Node configuration is invalid", error = error
       return
   
   # Set global metric labels
@@ -451,13 +455,19 @@ proc main {.async.} =
   switch.mount(gossipSub)
   await switch.start()
 
+  info "Node started",
+    nodeType = "gossipsub",
+    peerId = switch.peerInfo.peerId,
+    listen = switch.peerInfo.addrs
+
   # Metrics
-  info "Starting metrics server"
   let metricsServer = startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
-    error "Failed to initialize metrics server", err = metricsServer.error
-  elif inShadow:
-    asyncSpawn storeMetrics(myId)
+    warn "Failed to initialize metrics server", error = metricsServer.error
+  else:
+    info "Started metrics server"
+    if inShadow:
+      asyncSpawn storeMetrics(myId)
 
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId

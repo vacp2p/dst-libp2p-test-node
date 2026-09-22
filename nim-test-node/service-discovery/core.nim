@@ -4,6 +4,9 @@ import libp2p/protocols/service_discovery
 import libp2p/protocols/service_discovery/types
 import libp2p/extended_peer_record
 
+logScope:
+  topics = "dst"
+
 proc startAdvertisingServices*(
     disco: ServiceDiscovery, services: seq[ServiceInfo]
 ) =
@@ -13,7 +16,7 @@ proc startAdvertisingServices*(
 
   for service in services:
     disco.startAdvertising(service)
-    notice "Advertising service",
+    info "Advertising service",
       service = service.id,
       dataLen = service.data.len
 
@@ -25,7 +28,7 @@ proc startDiscoveringServicesLog*(
     return
 
   for serviceId in serviceIds:
-    notice "Discovering service", service = serviceId
+    info "Discovering service", service = serviceId
 
 proc runLookupLoop*(
     disco: ServiceDiscovery, serviceIds: seq[string], lookupInterval: Duration
@@ -46,7 +49,7 @@ proc runLookupLoop*(
           seqNo = ad.data.seqNo,
           addrs = ad.data.addresses.mapIt($it.address)
 
-      notice "Lookup completed",
+      info "Lookup completed",
         service = serviceId,
         advertisements = ads.len,
         uniquePeers = uniquePeers.len

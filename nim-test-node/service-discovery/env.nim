@@ -3,6 +3,9 @@ import chronos, chronicles, results
 import stew/byteutils
 from nativesockets import getHostname
 
+logScope:
+  topics = "dst"
+
 type
   NodeRole* = enum
     RoleBootstrap, RoleAdvertiser, RoleDiscoverer, RoleHybrid

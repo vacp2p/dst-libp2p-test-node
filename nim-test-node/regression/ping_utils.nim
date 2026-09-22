@@ -1,8 +1,12 @@
 import chronos
+import chronicles
 import std/[random, tables]
 
 import libp2p
 import libp2p/protocols/ping
+
+logScope:
+  topics = "dst"
 
 const
   PingInterval  = 12.seconds
@@ -112,4 +116,4 @@ proc pingLoop*(switch: Switch, pingProtocol: Ping) {.async.} =
   while not messagesStarted:
     await switch.pingAllOnce(pingProtocol)
     await sleepAsync(PingInterval)
-  info "keepalive ping stopped, gossipsub traffic now keeps connections open"
+  info "Keepalive ping stopped; gossipsub traffic now keeps connections open"

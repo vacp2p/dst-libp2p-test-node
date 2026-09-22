@@ -1,5 +1,6 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
+import chronicles
 import env
 import std/[strformat, random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
@@ -12,6 +13,9 @@ from nativesockets import getHostname
 import helpers
 import core
 
+logScope:
+  topics = "dst"
+
 proc main {.async.} =
   randomize()
 
@@ -20,14 +24,14 @@ proc main {.async.} =
   let
     rng = libp2p.newRng()
     (myId, muxer, address, nodeType, discovery) = getPeerDetails().valueOr:
-      error "Error reading peer settings ",  err = error
+      error "Node configuration is invalid", error = error
       return
 
   var switch = buildSwitch(muxer, address)
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
-  notice "Node started", peerId = $selfId, role = nodeType, listen = address
+  info "Node started", peerId = $selfId, nodeType = nodeType, listen = address
 
   # Role-based execution
   case nodeType
@@ -40,12 +44,12 @@ proc main {.async.} =
   of RoleNormal:
     let jitter = myId * 200
     if jitter > 0:
-      notice "Startup jitter", delayMs = jitter
+      info "Applying startup jitter", delayMs = jitter
       await sleepAsync(jitter.milliseconds)
 
     var bootAddressesRes = await connectToBootstraps(switch, muxer, service)
     let bootAddresses = bootAddressesRes.valueOr:
-      error "Failed to discover bootstrap nodes", service = service, err = error
+      error "Failed to discover bootstrap nodes", service = service, error = error
       quit(1)
 
     var kad = await mountDiscovery(switch, discovery, bootAddresses)
@@ -57,12 +61,12 @@ proc main {.async.} =
   of RoleProbe:
     let jitter = myId * 200
     if jitter > 0:
-      notice "Startup jitter", delayMs = jitter
+      info "Applying startup jitter", delayMs = jitter
       await sleepAsync(jitter.milliseconds)
 
     var bootAddressesRes = await connectToBootstraps(switch, muxer, service)
     let bootAddresses = bootAddressesRes.valueOr:
-      error "Failed to discover bootstrap nodes", service = service, err = error
+      error "Failed to discover bootstrap nodes", service = service, error = error
       quit(1)
 
     var kad = await mountDiscovery(switch, discovery, bootAddresses)

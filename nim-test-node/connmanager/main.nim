@@ -6,7 +6,7 @@ from nativesockets import getHostname
 import env
 
 logScope:
-  topics = "connmanager-test"
+  topics = "dst"
 
 proc resolveAndConnect(switch: Switch, address: string): Future[void] {.async.} =
   var backoff = 1.seconds
@@ -16,7 +16,7 @@ proc resolveAndConnect(switch: Switch, address: string): Future[void] {.async.} 
       if addrs.len == 0:
         raise newException(CatchableError, "no addresses resolved for " & address)
       let peerId = await switch.connect(addrs[0], allowUnknownPeerId = true).wait(10.seconds)
-      notice "Connected", address = address, peerId = peerId
+      info "Connected", address = address, peerId = peerId
       return
     except CatchableError as exc:
       warn "Connection failed, retrying",
@@ -59,7 +59,8 @@ proc runHub(cfg: HubConfig) {.async.} =
   for peerId in cfg.protectedPeers:
     switch.connManager.protect(peerId, "dst-protected")
 
-  notice "Hub started",
+  info "Node started",
+    nodeType = "hub",
     peerId = switch.peerInfo.peerId,
     lowWater = cfg.lowWater,
     highWater = cfg.highWater,
@@ -84,7 +85,7 @@ proc runHub(cfg: HubConfig) {.async.} =
     for i in 0..<cfg.numHubs:
       if i != myIdx:
         let hubAddr = "hub-" & $i & ".nimp2p-service." & cfg.hubNamespace & ".svc.cluster.local:5000"
-        notice "Dialing peer hub", target = hubAddr
+        info "Dialing peer hub", target = hubAddr
         asyncSpawn resolveAndConnect(switch, hubAddr)
 
   while true: await sleepAsync(1.hours)
@@ -104,7 +105,8 @@ proc runPeer(cfg: PeerConfig) {.async.} =
   let switch = builder.build()
   await switch.start()
 
-  notice "Peer started",
+  info "Node started",
+    nodeType = "peer",
     peerId = switch.peerInfo.peerId,
     dialOut = cfg.dialOut,
     reconnect = $cfg.reconnect
@@ -129,7 +131,7 @@ proc runPeer(cfg: PeerConfig) {.async.} =
         for peerId in switch.connectedPeers(Direction.Out):
           try: await switch.disconnect(peerId)
           except CatchableError: discard
-        notice "Cycled connection (grace abuse)", intervalS = cfg.reconnectIntervalS
+        info "Cycled connection (grace abuse)", intervalS = cfg.reconnectIntervalS
     else:
       for addr in cfg.hubAddrs:
         await resolveAndConnect(switch, addr)

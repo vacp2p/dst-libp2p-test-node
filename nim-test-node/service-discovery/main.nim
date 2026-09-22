@@ -5,9 +5,12 @@ import libp2p/extended_peer_record
 import libp2p/protocols/kademlia
 import env, helpers, core
 
+logScope:
+  topics = "dst"
+
 proc main() {.async.} =
   let cfg = getNodeConfig().valueOr:
-    error "Invalid node configuration", error
+    error "Node configuration is invalid", error = error
     quit(1)
 
   var switch = buildSwitch(cfg.muxer, cfg.maxConnections, cfg.listenAddress)
@@ -19,12 +22,12 @@ proc main() {.async.} =
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
-  notice "Service discovery node started",
-    peerId = $selfId, role = cfg.role, listen = cfg.listenAddress
+  info "Node started",
+    peerId = $selfId, nodeType = cfg.role, listen = cfg.listenAddress
 
   if cfg.role != RoleBootstrap:
     if cfg.startupJitterMs > 0:
-      notice "Applying startup jitter", delayMs = cfg.startupJitterMs
+      info "Applying startup jitter", delayMs = cfg.startupJitterMs
       await sleepAsync(cfg.startupJitterMs.milliseconds)
 
     let connectedBootstraps =
@@ -44,7 +47,7 @@ proc main() {.async.} =
 
   case cfg.role
   of RoleBootstrap:
-    notice "Bootstrap role active"
+    info "Bootstrap role active"
     while true:
       await sleepAsync(1.hours)
   of RoleAdvertiser:
