@@ -9,19 +9,19 @@ logScope:
   topics = "dst"
 
 const
-  PingInterval  = 12.seconds
+  PingInterval = 12.seconds
     ## A full sweep in batches takes a few seconds, so the gap between two pings of the
     ## same peer is the interval plus a sweep. Keep that comfortably under quic's 30s
     ## idle timeout.
-  PingBatch     = 16
+  PingBatch = 16
     ## Dials in flight at once. All ~250 together stalls the node's own publish
     ## endpoint, which cost 34 injections in the first minute of a 1000-node run.
-  PingBatchGap  = 200.milliseconds
-  PingTimeout   = 4.seconds
-  DialTimeout   = 4.seconds
-  CloseTimeout  = 2.seconds
-  SlowDialLog   = 500.milliseconds
-  SlowCloseLog  = 500.milliseconds
+  PingBatchGap = 200.milliseconds
+  PingTimeout = 4.seconds
+  DialTimeout = 4.seconds
+  CloseTimeout = 2.seconds
+  SlowDialLog = 500.milliseconds
+  SlowCloseLog = 500.milliseconds
 
 var messagesStarted = false
 
@@ -68,7 +68,8 @@ proc pingPeer*(switch: Switch, pingProtocol: Ping, peerId: PeerId) {.async.} =
     raise exc
   except CatchableError as exc:
     let dialDur = Moment.now() - dialStart
-    warn "keepalive ping failed", peerId = peerId, error = exc.msg, dialMs = dialDur.milliseconds
+    warn "keepalive ping failed",
+      peerId = peerId, error = exc.msg, dialMs = dialDur.milliseconds
   finally:
     if not stream.isNil and not stream.closed:
       let closeStart = Moment.now()
@@ -82,7 +83,8 @@ proc pingPeer*(switch: Switch, pingProtocol: Ping, peerId: PeerId) {.async.} =
       finally:
         let closeDur = Moment.now() - closeStart
         if closeDur >= SlowCloseLog:
-          warn "keepalive ping: slow close", peerId = peerId, closeMs = closeDur.milliseconds
+          warn "keepalive ping: slow close",
+            peerId = peerId, closeMs = closeDur.milliseconds
 
 proc pingAllOnce*(switch: Switch, pingProtocol: Ping) {.async.} =
   var peers: seq[PeerId] = @[]

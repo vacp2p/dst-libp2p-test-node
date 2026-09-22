@@ -70,7 +70,7 @@ proc connectToBootstraps*(
     muxer: string,
     service: string,
     defaultPort: Port,
-    maxConnections: int
+    maxConnections: int,
 ): Future[Result[seq[(PeerId, seq[MultiAddress])], string]] {.async.} =
   if maxConnections <= 0:
     return err("maxConnections must be greater than 0")

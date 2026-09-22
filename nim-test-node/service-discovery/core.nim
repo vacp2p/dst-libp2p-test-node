@@ -7,22 +7,16 @@ import libp2p/extended_peer_record
 logScope:
   topics = "dst"
 
-proc startAdvertisingServices*(
-    disco: ServiceDiscovery, services: seq[ServiceInfo]
-) =
+proc startAdvertisingServices*(disco: ServiceDiscovery, services: seq[ServiceInfo]) =
   if services.len == 0:
     warn "No services configured for advertising"
     return
 
   for service in services:
     disco.startAdvertising(service)
-    info "Advertising service",
-      service = service.id,
-      dataLen = service.data.len
+    info "Advertising service", service = service.id, dataLen = service.data.len
 
-proc startDiscoveringServicesLog*(
-    disco: ServiceDiscovery, serviceIds: seq[string]
-) =
+proc startDiscoveringServicesLog*(disco: ServiceDiscovery, serviceIds: seq[string]) =
   if serviceIds.len == 0:
     warn "No services configured for discovery"
     return
@@ -50,8 +44,6 @@ proc runLookupLoop*(
           addrs = ad.data.addresses.mapIt($it.address)
 
       info "Lookup completed",
-        service = serviceId,
-        advertisements = ads.len,
-        uniquePeers = uniquePeers.len
+        service = serviceId, advertisements = ads.len, uniquePeers = uniquePeers.len
 
     await sleepAsync(lookupInterval)

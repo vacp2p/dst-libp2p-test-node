@@ -1,0 +1,35 @@
+name: Linters
+
+on:
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  nph:
+    name: Check NPH formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2  # In PR, has extra merge commit: ^1 = PR, ^2 = base
+          persist-credentials: false
+
+      - name: Check NPH formatting
+        uses: arnetheduck/nph-action@v1
+        with:
+          version: 0.7.0
+          # NPH recursively discovers Nim files and applies its default include
+          # pattern (\.nim, .nims, and .nimble) when given a directory.
+          # NPH normalizes paths with forward slashes, so this matches a
+          # nimbledeps directory at every nesting level.
+          options: "--extend-exclude:/nimbledeps/ ./."
+          fail: true
+          suggest: true

@@ -3,7 +3,8 @@ import chronos, chronos/apps/http/httpserver
 import chronicles
 import env
 import std/[strformat, random, hashes]
-import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
+import
+  libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
 import sequtils, math, metrics, metrics/chronos_httpserver
@@ -13,7 +14,6 @@ from nativesockets import getHostname
 
 logScope:
   topics = "dst"
-
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -29,56 +29,57 @@ var
 declareCounter(
   dst_testnode_publish_requests_total,
   "number of /publish requests accepted by the test node",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareCounter(
   dst_testnode_publish_failures_total,
   "number of failed local publish attempts",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareCounter(
   dst_testnode_received_chunks_total,
   "number of application-level message chunks received",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareCounter(
   dst_testnode_completed_messages_total,
   "number of application-level messages fully received",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareCounter(
   dst_testnode_message_delay_ms_sum,
   "sum of message delays in milliseconds (use with rate)",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareHistogram(
   dst_testnode_message_delay_ms,
   "message delay histogram for percentile analysis",
   labels = ["muxer", "peer_id"],
-  buckets = [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0]
+  buckets =
+    [1.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0],
 )
 
 declareGauge(
   dst_testnode_last_message_delay_ms,
   "last observed message delay in milliseconds (real-time)",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareGauge(
   dst_testnode_mesh_size,
   "current GossipSub mesh size for the test topic",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 
 declareGauge(
   dst_testnode_topic_peers,
   "current number of GossipSub peers for the test topic",
-  labels = ["muxer", "peer_id"]
+  labels = ["muxer", "peer_id"],
 )
 proc getEnvInt(name: string, defaultValue: int): int =
   let value = getEnv(name, "")
@@ -89,11 +90,8 @@ proc getEnvInt(name: string, defaultValue: int): int =
     return parseInt(value)
   except ValueError:
     warn "Invalid integer ENV value, using default",
-      name = name,
-      value = value,
-      defaultValue = defaultValue
+      name = name, value = value, defaultValue = defaultValue
     return defaultValue
-
 
 proc getEnvFloat(name: string, defaultValue: float): float =
   let value = getEnv(name, "")
@@ -104,11 +102,8 @@ proc getEnvFloat(name: string, defaultValue: float): float =
     return parseFloat(value)
   except ValueError:
     warn "Invalid float ENV value, using default",
-      name = name,
-      value = value,
-      defaultValue = defaultValue
+      name = name, value = value, defaultValue = defaultValue
     return defaultValue
-
 
 proc getEnvBool(name: string, defaultValue: bool): bool =
   let value = getEnv(name, "")
@@ -119,9 +114,7 @@ proc getEnvBool(name: string, defaultValue: bool): bool =
     return parseBool(value)
   except ValueError:
     warn "Invalid bool ENV value, using default",
-      name = name,
-      value = value,
-      defaultValue = defaultValue
+      name = name, value = value, defaultValue = defaultValue
     return defaultValue
 
 proc msgIdProvider(m: Message): Result[MessageId, ValidationResult] =
@@ -139,7 +132,8 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
       delay = recvTime - sendTime
 
     # warm-up
-    if timestampNs < 1000000: return
+    if timestampNs < 1000000:
+      return
 
     # Log received message
     info "Received message",
@@ -148,40 +142,47 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
       current = recvTime.toUnixNanoseconds(),
       delayMs = delay.inMilliseconds()
 
-    messagesChunks.inc(msgId)  # Use msgId instead of timestamp for tracking
-    if messagesChunks[msgId] < chunks: return
+    messagesChunks.inc(msgId) # Use msgId instead of timestamp for tracking
+    if messagesChunks[msgId] < chunks:
+      return
 
     echo msgId, " milliseconds: ", delay.inMilliseconds()
     dst_testnode_completed_messages_total.inc(labelValues = [gMuxer, gPeerId])
-    dst_testnode_message_delay_ms_sum.inc(delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId])
-    dst_testnode_message_delay_ms.observe(delay.inMilliseconds().float64, labelValues = [gMuxer, gPeerId])
-    dst_testnode_last_message_delay_ms.set(delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId])
+    dst_testnode_message_delay_ms_sum.inc(
+      delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId]
+    )
+    dst_testnode_message_delay_ms.observe(
+      delay.inMilliseconds().float64, labelValues = [gMuxer, gPeerId]
+    )
+    dst_testnode_last_message_delay_ms.set(
+      delay.inMilliseconds().int64, labelValues = [gMuxer, gPeerId]
+    )
 
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
   return ValidationResult.Accept
 
-
-proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
+proc publishNewMessage(
+    gossipSub: GossipSub, msgSize: int, topic: string
+): Future[(Time, int)] {.async.} =
   dst_testnode_publish_requests_total.inc(labelValues = [gMuxer, gPeerId])
   let
     now = getTime()
-    nowInt = now.toUnixFloat() * 1_000_000_000.0  # seconds + nanoseconds as float
-    msgId = uint64(rand(high(int64)))  # Safe 0..<2^63 range
+    nowInt = now.toUnixFloat() * 1_000_000_000.0 # seconds + nanoseconds as float
+    msgId = uint64(rand(high(int64))) # Safe 0..<2^63 range
 
   var
     res = 0
-    nowBytes = @(toBytesLE(uint64(nowInt))) & @(toBytesLE(msgId)) &
-             newSeq[byte](msgSize div chunks - 16)
+    nowBytes =
+      @(toBytesLE(uint64(nowInt))) & @(toBytesLE(msgId)) &
+      newSeq[byte](msgSize div chunks - 16)
 
-  info "Sent message",
-    msgId = msgId,
-    timestamp = getTime().toUnixNanoseconds()
+  info "Sent message", msgId = msgId, timestamp = getTime().toUnixNanoseconds()
 
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
-  for chunk in 0..<chunks:
+  for chunk in 0 ..< chunks:
     nowBytes[16] = byte(chunk)
     res = await gossipSub.publish(topic, nowBytes)
-  info "publish result", 
+  info "publish result",
     res = res,
     meshSize = gossipSub.mesh.getOrDefault(topic).len,
     gossipPeers = gossipSub.gossipsub.getOrDefault(topic).len,
@@ -211,24 +212,40 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
             msgSize = jsonBody["msgSize"].getInt()
             version = jsonBody["version"].getInt()
 
-          info "controller message ", command = req.uri.path, topic = topic, size = msgSize, version = version
-          let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, topic)
+          info "controller message ",
+            command = req.uri.path, topic = topic, size = msgSize, version = version
+          let (publishTime, publishResult) =
+            await gossipSub.publishNewMessage(msgSize, topic)
 
           if publishResult > 0:
-            let responseJson = """{"status":"success","message":"Message published at time """ & $publishTime & "}"
-            return await req.respond(Http200, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+            let responseJson =
+              """{"status":"success","message":"Message published at time """ &
+              $publishTime & "}"
+            return await req.respond(
+              Http200,
+              responseJson,
+              HttpTable.init([("Content-Type", "application/json")]),
+            )
           else:
-            let responseJson = """{"status":"error","message":"Failed to publist at time """ & $publishTime & "}"
-            return await req.respond(Http500, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+            let responseJson =
+              """{"status":"error","message":"Failed to publist at time """ &
+              $publishTime & "}"
+            return await req.respond(
+              Http500,
+              responseJson,
+              HttpTable.init([("Content-Type", "application/json")]),
+            )
         else:
           return await req.respond(Http404, "Not Found")
       else:
         return await req.respond(Http405, "Method Not Supported")
-
     except CatchableError as e:
       info "Error handling http request: ", error = e.msg
-      let responseJson = """{"status":"error","message":"""" & e.msg.replace("\"", "\\\"") & """"}"""
-      return await req.respond(Http400, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+      let responseJson =
+        """{"status":"error","message":"""" & e.msg.replace("\"", "\\\"") & """"}"""
+      return await req.respond(
+        Http400, responseJson, HttpTable.init([("Content-Type", "application/json")])
+      )
 
   # http endpoint for publish controller
   info "starting http server", httpPort = $httpPublishPort
@@ -236,7 +253,8 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   let serverRes = HttpServerRef.new(serverAddress, processRequests)
 
   if serverRes.isErr():
-    raise newException(CatchableError, "Failed to create HTTP server: " & $serverRes.error)
+    raise
+      newException(CatchableError, "Failed to create HTTP server: " & $serverRes.error)
 
   let server = serverRes.get()
   server.start()
@@ -245,13 +263,13 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
 
 proc initializeGossipsub(switch: Switch, anonymize: bool): GossipSub =
   return GossipSub.init(
-      switch = switch,
-      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
-      msgIdProvider = msgIdProvider,
-      verifySignature = false,
-      anonymize = anonymize,
-      rng = libp2p.newRng(),
-    )
+    switch = switch,
+    triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
+    msgIdProvider = msgIdProvider,
+    verifySignature = false,
+    anonymize = anonymize,
+    rng = libp2p.newRng(),
+  )
 
 proc configureGossipsubParams(gossipSub: GossipSub) =
   let
@@ -266,7 +284,8 @@ proc configureGossipsubParams(gossipSub: GossipSub) =
     pruneBackoffSec = getEnvInt("GOSSIPSUB_PRUNE_BACKOFF_SEC", 60)
 
     maxHighPriorityQueueLen = getEnvInt("GOSSIPSUB_MAX_HIGH_PRIORITY_QUEUE_LEN", 256)
-    maxMediumPriorityQueueLen = getEnvInt("GOSSIPSUB_MAX_MEDIUM_PRIORITY_QUEUE_LEN", 512)
+    maxMediumPriorityQueueLen =
+      getEnvInt("GOSSIPSUB_MAX_MEDIUM_PRIORITY_QUEUE_LEN", 512)
     maxLowPriorityQueueLen = getEnvInt("GOSSIPSUB_MAX_LOW_PRIORITY_QUEUE_LEN", 1024)
 
     slowPeerPenaltyWeight = getEnvFloat("GOSSIPSUB_SLOW_PEER_PENALTY_WEIGHT", 0.0)
@@ -279,9 +298,10 @@ proc configureGossipsubParams(gossipSub: GossipSub) =
     #gossipThreshold = getEnvFloat("GOSSIPSUB_GOSSIP_THRESHOLD", -100.0)
     #publishThreshold = getEnvFloat("GOSSIPSUB_PUBLISH_THRESHOLD", -1000.0)
     #graylistThreshold = getEnvFloat("GOSSIPSUB_GRAYLIST_THRESHOLD", -10000.0)
-  
+
   gossipSub.parameters.floodPublish = getEnvBool("GOSSIPSUB_FLOOD_PUBLISH", true)
-  gossipSub.parameters.opportunisticGraftThreshold = getEnvFloat("GOSSIPSUB_OPPORTUNISTIC_GRAFT_THRESHOLD", -10000)
+  gossipSub.parameters.opportunisticGraftThreshold =
+    getEnvFloat("GOSSIPSUB_OPPORTUNISTIC_GRAFT_THRESHOLD", -10000)
 
   gossipSub.parameters.heartbeatInterval = heartbeatMs.milliseconds
   gossipSub.parameters.pruneBackoff = pruneBackoffSec.seconds
@@ -340,22 +360,22 @@ proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
     topicWeight: 1,
     firstMessageDeliveriesWeight: 1,
     firstMessageDeliveriesCap: 30,
-    firstMessageDeliveriesDecay: 0.9
+    firstMessageDeliveriesDecay: 0.9,
   )
 
   gossipSub.subscribe(topic, createMessageHandler())
   gossipSub.addValidator([topic], messageValidator)
 
-
-proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAddress], string]] {.async.} =
+proc resolveAddress(
+    muxer: string, tAddress: string
+): Future[Result[seq[MultiAddress], string]] {.async.} =
   while true:
     try:
       let resolvedAddrs =
         if muxer.toLowerAscii() == "quic":
           let quicV1 = MultiAddress.init("/quic-v1").tryGet()
           resolveTAddress(tAddress).mapIt(
-            MultiAddress.init(it, IPPROTO_UDP).tryGet()
-              .concat(quicV1).tryGet()
+            MultiAddress.init(it, IPPROTO_UDP).tryGet().concat(quicV1).tryGet()
           )
         else:
           resolveTAddress(tAddress).mapIt(MultiAddress.init(it).tryGet())
@@ -369,7 +389,7 @@ proc resolveAddress(muxer: string, tAddress: string): Future[Result[seq[MultiAdd
       await sleepAsync(15.seconds)
 
 proc connectGossipsubPeers(
-  switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int
+    switch: Switch, muxer: string, networkSize: int, myId: int, connectTo: int
 ): Future[Result[int, string]] {.async.} =
   let rng = libp2p.newRng()
   var
@@ -378,10 +398,11 @@ proc connectGossipsubPeers(
     connected = 0
 
   if inShadow:
-    var peers = toSeq(0..<networkSize).filterIt(it != myId)
+    var peers = toSeq(0 ..< networkSize).filterIt(it != myId)
     rng.shuffle(peers)
     #collect enough random peers to make target connections
-    let peersAddrs = peers[0..<min(connectTo * 2, peers.len)].mapIt("pod-" & $it & ":" & $myPort)
+    let peersAddrs =
+      peers[0 ..< min(connectTo * 2, peers.len)].mapIt("pod-" & $it & ":" & $myPort)
     tAddresses = peersAddrs
   else:
     let serviceName = getEnv("SERVICE", "nimp2p-service")
@@ -397,11 +418,13 @@ proc connectGossipsubPeers(
 
   #Make target connections
   for peer in addrs:
-    if connected >= connectTo: break
+    if connected >= connectTo:
+      break
     try:
-      discard await switch.connect(peer, allowUnknownPeerId=true).wait(5.seconds)
+      discard await switch.connect(peer, allowUnknownPeerId = true).wait(5.seconds)
       connected.inc()
-      info "Connected!: current connections ", connected = $connected, target = connectTo
+      info "Connected!: current connections ",
+        connected = $connected, target = connectTo
     except CatchableError as exc:
       warn "Failed to dial ", theirAddress = peer, message = exc.msg
       await sleepAsync(15.seconds)
@@ -409,21 +432,21 @@ proc connectGossipsubPeers(
   if connected == 0:
     return err("Failed to connect any peer")
   elif connected < connectTo:
-    warn "Connected to fewer peers than target", connected = connected, target = connectTo
+    warn "Connected to fewer peers than target",
+      connected = connected, target = connectTo
   return ok(connected)
 
-
-proc main {.async.} =
+proc main() {.async.} =
   randomize()
   let
     rng = libp2p.newRng()
     (myId, networkSize, connectTo, muxer, filePath, address) = getPeerDetails().valueOr:
       error "Node configuration is invalid", error = error
       return
-  
+
   # Set global metric labels
   gMuxer = muxer
-  
+
   var
     gossipSub: GossipSub
     builder = SwitchBuilder
@@ -438,14 +461,12 @@ proc main {.async.} =
   of "quic":
     builder = builder.withQuicTransport()
   of "yamux":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-              .withYamux()
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withYamux()
   of "mplex":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-              .withMplex()
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withMplex()
 
   let switch = builder.build()
-  
+
   # Set peerId for metric labels
   gPeerId = $switch.peerInfo.peerId
   gossipSub = initializeGossipsub(switch, true)
@@ -480,15 +501,13 @@ proc main {.async.} =
     error "Failed to establish any connections", error = error
     return
 
-  await sleepAsync(15.seconds)  # Allow multiple heartbeats to build mesh
+  await sleepAsync(15.seconds) # Allow multiple heartbeats to build mesh
   let meshSize = gossipSub.mesh.getOrDefault("test").len
   let peersConnected = gossipSub.gossipsub.getOrDefault("test").len
   dst_testnode_mesh_size.set(meshSize.int64, labelValues = [gMuxer, gPeerId])
   dst_testnode_topic_peers.set(peersConnected.int64, labelValues = [gMuxer, gPeerId])
 
-  info "Mesh details ",
-    meshSize = meshSize,
-    peersConnected = peersConnected
+  info "Mesh details ", meshSize = meshSize, peersConnected = peersConnected
   info "Starting listening endpoint for publish controller"
   discard gossipSub.startHttpServer(myId)
 

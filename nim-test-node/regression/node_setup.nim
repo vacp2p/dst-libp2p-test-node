@@ -18,11 +18,9 @@ proc buildSwitch*(muxer: string, address: string): Switch =
   of "quic":
     builder = builder.withQuicTransport()
   of "yamux":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-              .withYamux()
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withYamux()
   of "mplex":
-    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay})
-              .withMplex()
+    builder = builder.withTcpTransport(flags = {ServerFlags.TcpNoDelay}).withMplex()
   else:
     raiseAssert("Unknown muxer type: " & muxer)
 
