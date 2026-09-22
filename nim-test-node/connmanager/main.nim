@@ -10,12 +10,13 @@ logScope:
 
 proc resolveAndConnect(switch: Switch, address: string): Future[void] {.async.} =
   var backoff = 1.seconds
-  for attempt in 1..10:
+  for attempt in 1 .. 10:
     try:
       let addrs = resolveTAddress(address).mapIt(MultiAddress.init(it).tryGet())
       if addrs.len == 0:
         raise newException(CatchableError, "no addresses resolved for " & address)
-      let peerId = await switch.connect(addrs[0], allowUnknownPeerId = true).wait(10.seconds)
+      let peerId =
+        await switch.connect(addrs[0], allowUnknownPeerId = true).wait(10.seconds)
       info "Connected", address = address, peerId = peerId
       return
     except CatchableError as exc:
@@ -31,7 +32,8 @@ proc startMetrics() =
     warn "Failed to start metrics server", error = $res.error
     return
   let srv = res.get()
-  try: waitFor srv.start()
+  try:
+    waitFor srv.start()
   except CatchableError as exc:
     warn "Metrics server start failed", error = exc.msg
 
@@ -44,10 +46,7 @@ proc runHub(cfg: HubConfig) {.async.} =
     .withNoise()
     .withYamux()
     .withWatermark(
-      cfg.lowWater,
-      cfg.highWater,
-      cfg.gracePeriodS.seconds,
-      cfg.silencePeriodS.seconds,
+      cfg.lowWater, cfg.highWater, cfg.gracePeriodS.seconds, cfg.silencePeriodS.seconds
     )
 
   if cfg.maxConnections > 0:
@@ -81,14 +80,20 @@ proc runHub(cfg: HubConfig) {.async.} =
   if cfg.numHubs > 1:
     let hostname = getHostname()
     let parts = hostname.split('-')
-    let myIdx = try: parseInt(parts[^1]) except CatchableError: 0
-    for i in 0..<cfg.numHubs:
+    let myIdx =
+      try:
+        parseInt(parts[^1])
+      except CatchableError:
+        0
+    for i in 0 ..< cfg.numHubs:
       if i != myIdx:
-        let hubAddr = "hub-" & $i & ".nimp2p-service." & cfg.hubNamespace & ".svc.cluster.local:5000"
+        let hubAddr =
+          "hub-" & $i & ".nimp2p-service." & cfg.hubNamespace & ".svc.cluster.local:5000"
         info "Dialing peer hub", target = hubAddr
         asyncSpawn resolveAndConnect(switch, hubAddr)
 
-  while true: await sleepAsync(1.hours)
+  while true:
+    await sleepAsync(1.hours)
 
 proc runPeer(cfg: PeerConfig) {.async.} =
   var builder = SwitchBuilder
@@ -129,19 +134,25 @@ proc runPeer(cfg: PeerConfig) {.async.} =
           await resolveAndConnect(switch, addr)
         await sleepAsync(cfg.reconnectIntervalS.seconds)
         for peerId in switch.connectedPeers(Direction.Out):
-          try: await switch.disconnect(peerId)
-          except CatchableError: discard
+          try:
+            await switch.disconnect(peerId)
+          except CatchableError:
+            discard
         info "Cycled connection (grace abuse)", intervalS = cfg.reconnectIntervalS
     else:
       for addr in cfg.hubAddrs:
         await resolveAndConnect(switch, addr)
-      while true: await sleepAsync(1.hours)
+      while true:
+        await sleepAsync(1.hours)
   else:
-    while true: await sleepAsync(1.hours)
+    while true:
+      await sleepAsync(1.hours)
 
 proc main() {.async.} =
   case getRole()
-  of RoleHub: await runHub(parseHubConfig())
-  of RolePeer: await runPeer(parsePeerConfig())
+  of RoleHub:
+    await runHub(parseHubConfig())
+  of RolePeer:
+    await runPeer(parsePeerConfig())
 
 waitFor main()

@@ -3,7 +3,8 @@ import chronos, chronos/apps/http/httpserver
 import chronicles
 import env
 import std/[strformat, random, hashes]
-import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
+import
+  libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 import libp2p/protocols/[kademlia, kad_disco]
 
@@ -16,7 +17,7 @@ import core
 logScope:
   topics = "dst"
 
-proc main {.async.} =
+proc main() {.async.} =
   randomize()
 
   var service = getEnv("SERVICE", "kad-service:5000")
@@ -39,8 +40,8 @@ proc main {.async.} =
     var kad = await mountDiscovery(switch, discovery, @[])
     discard await startHealthServer(prometheusPort)
     # Just stay alive and serve queries
-    while true: await sleepAsync(1.hours)
-
+    while true:
+      await sleepAsync(1.hours)
   of RoleNormal:
     let jitter = myId * 200
     if jitter > 0:
@@ -56,8 +57,8 @@ proc main {.async.} =
     await runWarmup(kad, selfId)
     discard await startHealthServer(prometheusPort)
     # Keep node alive for steady state refresh
-    while true: await sleepAsync(1.hours)
-
+    while true:
+      await sleepAsync(1.hours)
   of RoleProbe:
     let jitter = myId * 200
     if jitter > 0:
@@ -71,6 +72,7 @@ proc main {.async.} =
 
     var kad = await mountDiscovery(switch, discovery, bootAddresses)
     await runProbe(kad)
-    while true: await sleepAsync(1.hours)
+    while true:
+      await sleepAsync(1.hours)
 
 waitFor(main())

@@ -12,13 +12,12 @@ import ../shutdown_utils
 logScope:
   topics = "dst"
 
-proc main {.async.} =
+proc main() {.async.} =
   let
     rng = libp2p.newRng()
-    (myId, muxer, _, address) =
-      getPeerDetails().valueOr:
-        error "Node configuration is invalid", error = error
-        quit(1)
+    (myId, muxer, _, address) = getPeerDetails().valueOr:
+      error "Node configuration is invalid", error = error
+      quit(1)
 
   let switch = buildSwitch(muxer, address)
   discard mountBaseProtocols(switch, rng)
@@ -26,7 +25,8 @@ proc main {.async.} =
   await switch.start()
 
   info "Starting metrics server"
-  let metricsServer = await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
+  let metricsServer =
+    await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
     warn "Failed to initialize metrics server", error = metricsServer.error
   elif inShadow:

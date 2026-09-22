@@ -9,27 +9,30 @@ logScope:
 
 type
   NodeRole* = enum
-    RoleHub, RolePeer
+    RoleHub
+    RolePeer
 
   ReconnectMode* = enum
-    ReconnectNone, ReconnectAggressive, ReconnectBeforeGrace
+    ReconnectNone
+    ReconnectAggressive
+    ReconnectBeforeGrace
 
   HubConfig* = object
     lowWater*: int
     highWater*: int
     gracePeriodS*: int
     silencePeriodS*: int
-    maxConnections*: int       # 0 = no hard cap (Runs A/B/C), >0 adds semaphore (Run D)
+    maxConnections*: int # 0 = no hard cap (Runs A/B/C), >0 adds semaphore (Run D)
     protectedPeers*: seq[PeerId]
-    outboundPeers*: seq[string]  # addresses hub dials proactively (Group A in Run A)
-    numHubs*: int              # total hub replicas; >1 triggers hub-to-hub dialing
-    hubNamespace*: string      # k8s namespace used to build peer-hub DNS addresses
+    outboundPeers*: seq[string] # addresses hub dials proactively (Group A in Run A)
+    numHubs*: int # total hub replicas; >1 triggers hub-to-hub dialing
+    hubNamespace*: string # k8s namespace used to build peer-hub DNS addresses
 
   PeerConfig* = object
-    hubAddrs*: seq[string]     # one or more hub addresses to connect to (multi-hub support)
-    dialOut*: bool             # true = peer dials hub; false = peer listens, hub dials it
+    hubAddrs*: seq[string] # one or more hub addresses to connect to (multi-hub support)
+    dialOut*: bool # true = peer dials hub; false = peer listens, hub dials it
     reconnect*: ReconnectMode
-    reconnectIntervalS*: int   # for ReconnectBeforeGrace: cycle connection every N seconds
+    reconnectIntervalS*: int # for ReconnectBeforeGrace: cycle connection every N seconds
     privateKey*: Opt[PrivateKey]
 
 let
@@ -49,7 +52,8 @@ proc parseHubConfig*(): HubConfig =
   let protectedStr = getEnv("PROTECTED_PEERS", "")
   for entry in protectedStr.split(','):
     let s = entry.strip()
-    if s.len == 0: continue
+    if s.len == 0:
+      continue
     let peerId = PeerId.init(s).valueOr:
       warn "Skipping invalid peer ID in PROTECTED_PEERS", raw = s
       continue
@@ -95,8 +99,15 @@ proc parsePeerConfig*(): PeerConfig =
       let keys = privKeysStr.split(',')
       let hostname = getHostname()
       let parts = hostname.split('-')
-      let idx = try: parseInt(parts[^1]) except CatchableError: 0
-      if idx < keys.len: keys[idx].strip() else: ""
+      let idx =
+        try:
+          parseInt(parts[^1])
+        except CatchableError:
+          0
+      if idx < keys.len:
+        keys[idx].strip()
+      else:
+        ""
     else:
       getEnv("PRIVATE_KEY", "")
 

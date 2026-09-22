@@ -8,7 +8,10 @@ logScope:
 
 type
   NodeRole* = enum
-    RoleBootstrap, RoleAdvertiser, RoleDiscoverer, RoleHybrid
+    RoleBootstrap
+    RoleAdvertiser
+    RoleDiscoverer
+    RoleHybrid
 
   NodeConfig* = object
     nodeIndex*: int
@@ -31,26 +34,15 @@ type
     maxBootstraps*: int
 
 proc `$`(c: NodeConfig): string =
-  "NodeConfig(" &
-    "role=" & $c.role &
-    ", nodeIndex=" & $c.nodeIndex &
-    ", muxer=" & c.muxer &
-    ", listenAddress=" & c.listenAddress &
-    ", bootstrapService=" & c.bootstrapService &
-    ", advertiseServices=" & $c.advertiseServices &
-    ", discoverServices=" & $c.discoverServices &
-    ", listenPort=" & $c.listenPort &
-    ", healthPort=" & $c.healthPort &
-    ", lookupInterval=" & $c.lookupInterval &
-    ", startupJitterMs=" & $c.startupJitterMs &
-    ", safetyParam=" & $c.safetyParam &
-    ", ipSimCoefficient=" & $c.ipSimCoefficient &
-    ", advertExpiry=" & $c.advertExpiry &
-    ", xprPublishing=" & $c.xprPublishing &
-    ", maxConnections=" & $c.maxConnections &
-    ", maxBootstraps=" & $c.maxBootstraps &
-  ")"
-
+  "NodeConfig(" & "role=" & $c.role & ", nodeIndex=" & $c.nodeIndex & ", muxer=" &
+    c.muxer & ", listenAddress=" & c.listenAddress & ", bootstrapService=" &
+    c.bootstrapService & ", advertiseServices=" & $c.advertiseServices &
+    ", discoverServices=" & $c.discoverServices & ", listenPort=" & $c.listenPort &
+    ", healthPort=" & $c.healthPort & ", lookupInterval=" & $c.lookupInterval &
+    ", startupJitterMs=" & $c.startupJitterMs & ", safetyParam=" & $c.safetyParam &
+    ", ipSimCoefficient=" & $c.ipSimCoefficient & ", advertExpiry=" & $c.advertExpiry &
+    ", xprPublishing=" & $c.xprPublishing & ", maxConnections=" & $c.maxConnections &
+    ", maxBootstraps=" & $c.maxBootstraps & ")"
 
 proc parseIntEnv(name: string, defaultValue: string): Result[int, string] =
   let raw = getEnv(name, defaultValue)
@@ -97,12 +89,13 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
   if listenPort <= 0 or listenPort > 65535:
     return err("PORT out of range: " & $listenPort)
 
-  let role = try:
-    parseEnum[NodeRole](getEnv("NODE_ROLE", "RoleBootstrap"))
-  except ValueError:
-    return err(
-      "Unknown NODE_ROLE. Expected one of: RoleBootstrap, RoleAdvertiser, RoleDiscoverer, RoleHybrid"
-    )
+  let role =
+    try:
+      parseEnum[NodeRole](getEnv("NODE_ROLE", "RoleBootstrap"))
+    except ValueError:
+      return err(
+        "Unknown NODE_ROLE. Expected one of: RoleBootstrap, RoleAdvertiser, RoleDiscoverer, RoleHybrid"
+      )
 
   let healthPort = parseIntEnv("HEALTH_PORT", "8645").valueOr:
     return err(error)
@@ -183,7 +176,7 @@ proc getNodeConfig*(): Result[NodeConfig, string] =
     advertExpiry: advertExpirySeconds.seconds,
     xprPublishing: xprPublishing,
     maxConnections: maxConnections,
-    maxBootstraps: maxBootstraps
+    maxBootstraps: maxBootstraps,
   )
 
   info "Node config loaded", cfg = $cfg

@@ -22,16 +22,16 @@ proc main() {.async.} =
   await switch.start()
 
   let selfId = switch.peerInfo.peerId
-  info "Node started",
-    peerId = $selfId, nodeType = cfg.role, listen = cfg.listenAddress
+  info "Node started", peerId = $selfId, nodeType = cfg.role, listen = cfg.listenAddress
 
   if cfg.role != RoleBootstrap:
     if cfg.startupJitterMs > 0:
       info "Applying startup jitter", delayMs = cfg.startupJitterMs
       await sleepAsync(cfg.startupJitterMs.milliseconds)
 
-    let connectedBootstraps =
-      await connectToBootstraps(switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps)
+    let connectedBootstraps = await connectToBootstraps(
+      switch, cfg.muxer, cfg.bootstrapService, cfg.listenPort, cfg.maxBootstraps
+    )
     let bootstrapNodes = connectedBootstraps.valueOr:
       error "Failed to connect to bootstrap nodes",
         service = cfg.bootstrapService, error

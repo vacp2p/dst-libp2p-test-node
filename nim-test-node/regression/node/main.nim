@@ -6,7 +6,8 @@ import libp2p
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 
 import math, metrics, metrics/chronos_httpserver
-from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
+from times import
+  getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds, toUnixFloat
 from nativesockets import getHostname
 
 import ../env
@@ -39,7 +40,8 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
       delay = recvTime - sendTime
 
     # warm-up
-    if timestampNs < 1000000: return
+    if timestampNs < 1000000:
+      return
 
     notePublishingStarted()
 
@@ -50,30 +52,31 @@ proc createMessageHandler(): proc(topic: string, data: seq[byte]) {.async, gcsaf
       current = recvTime.toUnixNanoseconds(),
       delayMs = delay.inMilliseconds()
 
-    messagesChunks.inc(msgId)  # Use msgId instead of timestamp for tracking
-    if messagesChunks[msgId] < chunks: return
+    messagesChunks.inc(msgId) # Use msgId instead of timestamp for tracking
+    if messagesChunks[msgId] < chunks:
+      return
 
 proc messageValidator(topic: string, msg: Message): Future[ValidationResult] {.async.} =
   return ValidationResult.Accept
 
-
-proc publishNewMessage(gossipSub: GossipSub, msgSize: int, topic: string): Future[(Time, int)] {.async.} =
+proc publishNewMessage(
+    gossipSub: GossipSub, msgSize: int, topic: string
+): Future[(Time, int)] {.async.} =
   let
     now = getTime()
-    nowInt = now.toUnixFloat() * 1_000_000_000.0  # seconds + nanoseconds as float
-    msgId = uint64(rand(high(int64)))  # Safe 0..<2^63 range
+    nowInt = now.toUnixFloat() * 1_000_000_000.0 # seconds + nanoseconds as float
+    msgId = uint64(rand(high(int64))) # Safe 0..<2^63 range
 
   var
     res = 0
-    nowBytes = @(toBytesLE(uint64(nowInt))) & @(toBytesLE(msgId)) &
-             newSeq[byte](msgSize div chunks - 16)
+    nowBytes =
+      @(toBytesLE(uint64(nowInt))) & @(toBytesLE(msgId)) &
+      newSeq[byte](msgSize div chunks - 16)
 
-  info "Sent message",
-    msgId = msgId,
-    timestamp = getTime().toUnixNanoseconds()
+  info "Sent message", msgId = msgId, timestamp = getTime().toUnixNanoseconds()
 
   #To support message fragmentation, we add fragment #. Each fragment (chunk) differs by one byte
-  for chunk in 0..<chunks:
+  for chunk in 0 ..< chunks:
     nowBytes[16] = byte(chunk)
     res = await gossipSub.publish(topic, nowBytes)
   return (now, res)
@@ -97,24 +100,40 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
             msgSize = jsonBody["msgSize"].getInt()
             version = jsonBody["version"].getInt()
 
-          info "controller message ", command = req.uri.path, topic = topic, size = msgSize, version = version
-          let (publishTime, publishResult) = await gossipSub.publishNewMessage(msgSize, topic)
+          info "controller message ",
+            command = req.uri.path, topic = topic, size = msgSize, version = version
+          let (publishTime, publishResult) =
+            await gossipSub.publishNewMessage(msgSize, topic)
 
           if publishResult > 0:
-            let responseJson = """{"status":"success","message":"Message published at time """ & $publishTime & "}"
-            return await req.respond(Http200, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+            let responseJson =
+              """{"status":"success","message":"Message published at time """ &
+              $publishTime & "}"
+            return await req.respond(
+              Http200,
+              responseJson,
+              HttpTable.init([("Content-Type", "application/json")]),
+            )
           else:
-            let responseJson = """{"status":"error","message":"Failed to publist at time """ & $publishTime & "}"
-            return await req.respond(Http500, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+            let responseJson =
+              """{"status":"error","message":"Failed to publist at time """ &
+              $publishTime & "}"
+            return await req.respond(
+              Http500,
+              responseJson,
+              HttpTable.init([("Content-Type", "application/json")]),
+            )
         else:
           return await req.respond(Http404, "Not Found")
       else:
         return await req.respond(Http405, "Method Not Supported")
-
     except CatchableError as e:
       info "Error handling http request: ", error = e.msg
-      let responseJson = """{"status":"error","message":"""" & e.msg.replace("\"", "\\\"") & """"}"""
-      return await req.respond(Http400, responseJson, HttpTable.init([("Content-Type", "application/json")]))
+      let responseJson =
+        """{"status":"error","message":"""" & e.msg.replace("\"", "\\\"") & """"}"""
+      return await req.respond(
+        Http400, responseJson, HttpTable.init([("Content-Type", "application/json")])
+      )
 
   # http endpoint for publish controller
   info "starting http server", httpPort = $httpPublishPort
@@ -122,7 +141,8 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
   let serverRes = HttpServerRef.new(serverAddress, processRequests)
 
   if serverRes.isErr():
-    raise newException(CatchableError, "Failed to create HTTP server: " & $serverRes.error)
+    raise
+      newException(CatchableError, "Failed to create HTTP server: " & $serverRes.error)
 
   let server = serverRes.get()
   server.start()
@@ -131,14 +151,14 @@ proc startHttpServer(gossipSub: GossipSub, myId: int): Future[HttpServerRef] {.a
 
 proc initializeGossipsub(switch: Switch, anonymize: bool, rng: Rng): GossipSub =
   return GossipSub.init(
-      switch = switch,
-      triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
-      msgIdProvider = msgIdProvider,
-      verifySignature = false,
-      anonymize = anonymize,
-      rng = rng,
-      customStreamCallbacks = Opt.none(CustomStreamCallbacks)
-    )
+    switch = switch,
+    triggerSelf = parseBool(getEnv("SELFTRIGGER", "true")),
+    msgIdProvider = msgIdProvider,
+    verifySignature = false,
+    anonymize = anonymize,
+    rng = rng,
+    customStreamCallbacks = Opt.none(CustomStreamCallbacks),
+  )
 
 proc configureGossipsubParams(gossipSub: GossipSub) =
   gossipSub.parameters.floodPublish = true
@@ -158,21 +178,19 @@ proc subscribGossipsubTopic(gossipSub: GossipSub, topic: string) =
     topicWeight: 1,
     firstMessageDeliveriesWeight: 1,
     firstMessageDeliveriesCap: 30,
-    firstMessageDeliveriesDecay: 0.9
+    firstMessageDeliveriesDecay: 0.9,
   )
 
   gossipSub.subscribe(topic, createMessageHandler())
   gossipSub.addValidator([topic], messageValidator)
 
-
-proc main {.async.} =
+proc main() {.async.} =
   randomize()
   let
     rng = libp2p.newRng()
-    (myId, muxer, _, address) =
-      getPeerDetails().valueOr:
-        error "Node configuration is invalid", error = error
-        return
+    (myId, muxer, _, address) = getPeerDetails().valueOr:
+      error "Node configuration is invalid", error = error
+      return
   let switch = buildSwitch(muxer, address)
 
   # Mount protocols before starting the switch; switch.start() starts mounted protocols.
@@ -196,7 +214,8 @@ proc main {.async.} =
   discard gossipSub.startHttpServer(myId)
 
   info "Starting metrics server"
-  let metricsServer = await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
+  let metricsServer =
+    await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
     warn "Failed to initialize metrics server", error = metricsServer.error
   elif inShadow:
@@ -217,7 +236,8 @@ proc main {.async.} =
   info "kad-dht discovery active", bootstraps = bootstraps.len
 
   await sleepAsync(5.seconds)
-  info "Mesh details ", meshSize = gossipSub.mesh.getOrDefault("test").len,
+  info "Mesh details ",
+    meshSize = gossipSub.mesh.getOrDefault("test").len,
     peersConnected = gossipSub.gossipsub.getOrDefault("test").len
 
   # Hold connections open until gossipsub traffic takes over

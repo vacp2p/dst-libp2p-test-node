@@ -1,4 +1,5 @@
-import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
+import
+  libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 import libp2p/protocols/[kademlia, kad_disco]
 import sequtils, math, metrics, metrics/chronos_httpserver
@@ -17,7 +18,7 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
   info "Starting warmup phase"
 
   # 5x FIND_NODE(self)
-  for i in 1..5:
+  for i in 1 .. 5:
     debug "Warmup: Finding self", iteration = i
     let peers = await kad.findNode(selfId.toKey())
     var rtPeers = 0
@@ -29,7 +30,7 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
     await sleepAsync(1.seconds)
 
   # 15x FIND_NODE(random)
-  for i in 1..15:
+  for i in 1 .. 15:
     let target = getRandomPeerId()
     debug "Warmup: Finding random node", iteration = i, target = target
 
@@ -50,9 +51,6 @@ proc runProbe*(kad: KadDHT) {.async.} =
       info "Probe: Finding node", target = $targetPeer
       let peers = await kad.findNode(targetKey).wait(30.seconds)
     except CatchableError as exc:
-      warn "Probe Failed",
-        target = $targetPeer,
-        success = false,
-        error = exc.msg
+      warn "Probe Failed", target = $targetPeer, success = false, error = exc.msg
 
     await sleepAsync(5.seconds)

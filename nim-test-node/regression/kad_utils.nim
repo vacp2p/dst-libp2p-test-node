@@ -13,14 +13,17 @@ logScope:
 # let FIND_NODE lookups discover the rest of the network. GossipSub then grafts
 # its mesh from the peers the DHT connected us to.
 
-const
-  BootstrapDialTimeout = 10.seconds
+const BootstrapDialTimeout = 10.seconds
 
 proc resolveBootstrapAddrs(
     muxer: string, service: string
 ): Future[Result[seq[MultiAddress], string]] {.async.} =
   # `service` is a k8s DNS name, optionally with a port; default to myPort.
-  let tAddress = if ':' in service: service else: service & ":" & $myPort
+  let tAddress =
+    if ':' in service:
+      service
+    else:
+      service & ":" & $myPort
   try:
     let resolved =
       if muxer.toLowerAscii() == "quic":
