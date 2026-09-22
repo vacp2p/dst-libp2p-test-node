@@ -2,6 +2,9 @@ import strutils, os, osproc
 import chronos, metrics/chronos_httpserver, chronicles
 from nativesockets import getHostname
 
+logScope:
+  topics = "dst"
+
 let
   inShadow* = getEnv("SHADOWENV").cmpIgnoreCase("true") == 0    #If Running for shadow simulator 
   httpPublishPort* = Port(8645)

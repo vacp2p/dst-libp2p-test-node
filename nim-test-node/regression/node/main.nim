@@ -1,5 +1,6 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver
+import chronicles
 import std/[random, hashes]
 import libp2p
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
@@ -13,6 +14,9 @@ import ../ping_utils
 import ../kad_utils
 import ../node_setup
 import ../shutdown_utils
+
+logScope:
+  topics = "dst"
 
 template toUnixNanoseconds(t: times.Time): int64 =
   (t.toUnixFloat() * 1_000_000_000).int64
@@ -167,7 +171,7 @@ proc main {.async.} =
     rng = libp2p.newRng()
     (myId, muxer, _, address) =
       getPeerDetails().valueOr:
-        error "Error reading peer settings ",  err = error
+        error "Node configuration is invalid", error = error
         return
   let switch = buildSwitch(muxer, address)
 
@@ -180,6 +184,11 @@ proc main {.async.} =
 
   await switch.start()
 
+  info "Node started",
+    nodeType = "regression",
+    peerId = switch.peerInfo.peerId,
+    listen = switch.peerInfo.addrs
+
   # Before the staggered bootstrap dial below, not after. A node's mesh arrives on
   # inbound dials from nodes that bootstrapped earlier, so it can publish long before
   # its own dial returns; gating :8645 on that left half the fleet refusing publishes.
@@ -189,7 +198,7 @@ proc main {.async.} =
   info "Starting metrics server"
   let metricsServer = await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
-    error "Failed to initialize metrics server", err = metricsServer.error
+    warn "Failed to initialize metrics server", error = metricsServer.error
   elif inShadow:
     asyncSpawn storeMetrics(myId)
 

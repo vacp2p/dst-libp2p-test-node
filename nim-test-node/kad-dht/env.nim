@@ -4,6 +4,9 @@ import std/[random]
 import libp2p, libp2p/[multiaddress, crypto/secp]
 from nativesockets import getHostname
 
+logScope:
+  topics = "dst"
+
 # --- Configuration & Types ---
 type
   NodeType* = enum

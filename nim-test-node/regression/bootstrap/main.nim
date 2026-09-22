@@ -9,12 +9,15 @@ import ../env
 import ../node_setup
 import ../shutdown_utils
 
+logScope:
+  topics = "dst"
+
 proc main {.async.} =
   let
     rng = libp2p.newRng()
     (myId, muxer, _, address) =
       getPeerDetails().valueOr:
-        error "Error reading peer settings ", err = error
+        error "Node configuration is invalid", error = error
         quit(1)
 
   let switch = buildSwitch(muxer, address)
@@ -25,14 +28,17 @@ proc main {.async.} =
   info "Starting metrics server"
   let metricsServer = await startMetricsServer(parseIpAddress("0.0.0.0"), prometheusPort)
   if metricsServer.isErr:
-    error "Failed to initialize metrics server", err = metricsServer.error
+    warn "Failed to initialize metrics server", error = metricsServer.error
   elif inShadow:
     asyncSpawn storeMetrics(myId)
 
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
-  info "Bootstrap node ready (kad-dht anchor)",
-    peer = myId, peerId = switch.peerInfo.peerId, addrs = switch.peerInfo.addrs
+  info "Node started",
+    nodeType = "bootstrap",
+    peer = myId,
+    peerId = switch.peerInfo.peerId,
+    listen = switch.peerInfo.addrs
 
   await waitShutdownSignal()
 

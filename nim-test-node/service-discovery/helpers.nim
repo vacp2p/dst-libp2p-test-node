@@ -4,6 +4,9 @@ import chronicles
 import libp2p, libp2p/[multiaddress]
 import libp2p/protocols/[kademlia, service_discovery]
 
+logScope:
+  topics = "dst"
+
 proc buildSwitch*(muxer: string, max_connections: int, listenAddress: string): Switch =
   var builder = SwitchBuilder
     .new()
@@ -88,7 +91,7 @@ proc connectToBootstraps*(
       try:
         let peerId =
           await switch.connect(addr, allowUnknownPeerId = true).wait(10.seconds)
-        notice "Connected to bootstrap", address = addr, peerId, attempt
+        info "Connected to bootstrap", address = addr, peerId, attempt
         bootstraps.add((peerId, @[addr]))
         break
       except CatchableError as exc:

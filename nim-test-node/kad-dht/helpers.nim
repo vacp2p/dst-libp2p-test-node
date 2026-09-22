@@ -5,6 +5,9 @@ import libp2p/protocols/[kademlia, kad_disco]
 import os
 import env
 
+logScope:
+  topics = "dst"
+
 # --- Helpers ---
 
 proc getRandomPeerId*(): PeerId =
@@ -74,7 +77,7 @@ proc connectToBootstraps*(switch: Switch, muxer: string, service: string
     for attempt in 1..10:
       try:
         let remotePeerId: PeerId = await switch.connect(addr, allowUnknownPeerId = true).wait(10.seconds)
-        notice "Connected to bootstrap", address = addr, peerId = remotePeerId
+        info "Connected to bootstrap", address = addr, peerId = remotePeerId
         bootstraps.add((remotePeerId, @[addr]))
         break
       except CatchableError as exc:

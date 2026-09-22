@@ -2,15 +2,19 @@ import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, m
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
 import libp2p/protocols/[kademlia, kad_disco]
 import sequtils, math, metrics, metrics/chronos_httpserver
+import chronicles
 import env
 import helpers
+
+logScope:
+  topics = "dst"
 
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 
 # --- Core Logic ---
 
 proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
-  notice "Starting warmup phase"
+  info "Starting warmup phase"
 
   # 5x FIND_NODE(self)
   for i in 1..5:
@@ -33,19 +37,18 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
 
     await sleepAsync(2.seconds)
 
-  notice "Warmup complete"
+  info "Warmup complete"
 
 proc runProbe*(kad: KadDHT) {.async.} =
-  notice "Starting probe loop"
+  info "Starting probe loop"
   while true:
     let
       targetPeer = getRandomPeerId()
       targetKey = targetPeer.toKey()
 
     try:
-      notice "Probe: Finding node", target = $targetPeer
+      info "Probe: Finding node", target = $targetPeer
       let peers = await kad.findNode(targetKey).wait(30.seconds)
-
     except CatchableError as exc:
       warn "Probe Failed",
         target = $targetPeer,

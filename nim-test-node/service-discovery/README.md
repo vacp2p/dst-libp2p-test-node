@@ -15,7 +15,7 @@ nim c \
   -d:metrics \
   -d:libp2p_network_protocols_metrics \
   -d:release \
-  -d:chronicles_log_level:NOTICE \
+  -d:chronicles_log_level:INFO \
   main
 ```
 

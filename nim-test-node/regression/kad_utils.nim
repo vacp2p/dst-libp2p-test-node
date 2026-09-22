@@ -5,6 +5,9 @@ import libp2p/protocols/kademlia
 
 import env
 
+logScope:
+  topics = "dst"
+
 # kad-dht mesh formation: instead of statically dialing CONNECTTO peers, normal
 # nodes connect to a bootstrap node, seed a Kademlia routing table from it, and
 # let FIND_NODE lookups discover the rest of the network. GossipSub then grafts
@@ -60,7 +63,7 @@ proc connectToBootstrap*(
         let peerId = await switch.connect(address, allowUnknownPeerId = true).wait(
           BootstrapDialTimeout
         )
-        notice "Connected to bootstrap", address = address, peerId = peerId
+        info "Connected to bootstrap", address = address, peerId = peerId
         bootstraps.add((peerId, @[address]))
         break
       except CancelledError as exc:

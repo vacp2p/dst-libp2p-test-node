@@ -1,12 +1,12 @@
 ## Compile
 
 Can be compiled locally with:
-`-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:NOTICE`
+`-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:INFO`
 
-Useful debug levels: `NOTICE`, `INFO`, `DEBUG`
+Useful debug levels: `INFO`, `DEBUG`
 If you want to test with a local nim-libp2p version with local changes, it can be done with:
 
-`-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:NOTICE --path:/your/path/nim-libp2p`
+`-d:chronicles_colors=None --threads:on --mm:refc -d:metrics -d:libp2p_network_protocols_metrics -d:release -d:chronicles_log_level:INFO --path:/your/path/nim-libp2p`
 
 Necessary logged information comes from the branch: https://github.com/vacp2p/nim-libp2p/tree/dst/improve_kad_logging.
 This commit is already set in .nimble file.

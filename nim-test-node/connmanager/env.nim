@@ -4,6 +4,9 @@ import stew/byteutils
 import libp2p, libp2p/[multiaddress, crypto/secp]
 from nativesockets import getHostname
 
+logScope:
+  topics = "dst"
+
 type
   NodeRole* = enum
     RoleHub, RolePeer
