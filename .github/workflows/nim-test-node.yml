@@ -1,10 +1,6 @@
 name: Compile Nim test nodes
 
 on:
-  push:
-    paths:
-      - "nim-test-node/**"
-      - ".github/workflows/nim-test-node.yml"
   pull_request:
     paths:
       - "nim-test-node/**"
