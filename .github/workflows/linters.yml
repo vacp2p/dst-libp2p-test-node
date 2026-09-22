@@ -26,6 +26,10 @@ jobs:
         uses: arnetheduck/nph-action@v1
         with:
           version: 0.7.0
-          options: "./. *.nim*"
+          # NPH recursively discovers Nim files and applies its default include
+          # pattern (\.nim, .nims, and .nimble) when given a directory.
+          # Match the directory name at every nesting level, without excluding
+          # unrelated paths that only contain the word "nimbledeps".
+          options: "--extend-exclude:(^|/)nimbledeps(/|$) ./."
           fail: true
           suggest: true
