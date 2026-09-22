@@ -1,0 +1,108 @@
+name: Compile Nim test nodes
+
+on:
+  push:
+    paths:
+      - "nim-test-node/**"
+      - ".github/workflows/nim-test-node.yml"
+  pull_request:
+    paths:
+      - "nim-test-node/**"
+      - ".github/workflows/nim-test-node.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Connection manager
+            directory: nim-test-node/connmanager
+            source: main.nim
+            locked: false
+          - name: GossipSub queues
+            directory: nim-test-node/gossipsub-queues
+            source: main.nim
+            locked: false
+          - name: Kademlia DHT
+            directory: nim-test-node/kad-dht
+            source: main.nim
+            locked: false
+          - name: Regression node
+            directory: nim-test-node/regression
+            source: node/main.nim
+            locked: true
+          - name: Regression bootstrap
+            directory: nim-test-node/regression
+            source: bootstrap/main.nim
+            locked: true
+          - name: Service discovery
+            directory: nim-test-node/service-discovery
+            source: main.nim
+            locked: false
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Nim
+        uses: iffy/install-nim@v5
+        with:
+          version: "2.2.10"
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install --yes libssl-dev
+
+      - name: Restore Nimble package cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nimble/pkgs
+            ~/.nimble/pkgs2
+            ~/.nimble/pkgcache
+          key: nimble-${{ runner.os }}-nim-2.2.10-${{ hashFiles(format('{0}/test_node.nimble', matrix.directory), format('{0}/nimble.lock', matrix.directory)) }}
+
+      - name: Install dependencies
+        env:
+          LOCKED: ${{ matrix.locked }}
+        run: |
+          if [[ "$LOCKED" == "true" ]]; then
+            nimble install --yes 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
+            nimble refresh
+            nimble setup
+          else
+            nimble install --yes
+          fi
+
+      - name: Compile source
+        run: |
+          mkdir -p build
+          nimble c \
+            -d:chronicles_colors=None \
+            -d:chronicles_log_level=INFO \
+            -d:chronicles_runtime_filtering=on \
+            --threads:on \
+            --mm:refc \
+            -d:metrics \
+            -d:libp2p_network_protocols_metrics \
+            -d:release \
+            --out:build/test-node \
+            "${{ matrix.source }}"
