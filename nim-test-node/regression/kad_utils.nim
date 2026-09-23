@@ -1,5 +1,5 @@
 import chronos, chronicles
-import sequtils, strutils
+import os, sequtils, strutils
 import libp2p
 import libp2p/protocols/kademlia
 
@@ -81,7 +81,11 @@ proc connectToBootstrap*(
 proc mountKadDht*(switch: Switch, rng: Rng): KadDHT =
   ## Mount kad-dht *before* the switch starts; the switch then starts the protocol
   ## (no manual start). Bootstrap peers are seeded later via seedBootstraps once dialed.
-  let kad = KadDHT.new(switch, rng = rng)
+  let graceS = parseInt(getEnv("LIVENESS_GRACE_S", "300"))
+  let kad = KadDHT.new(
+    switch, config = KadDHTConfig.new(livenessGracePeriod = graceS.seconds), rng = rng
+  )
+  info "kad-dht liveness grace period", seconds = graceS
   switch.mount(kad)
   kad
 
