@@ -189,7 +189,7 @@ proc traceWhileUnderMeshed(gossipSub: GossipSub) {.async.} =
     if under != tracing:
       let level = if under: LogLevel.TRACE else: LogLevel.NONE
       for topic in traceTopics:
-        if not setTopicState(topic, TopicState.Normal, level):
+        if not chronicles.setTopicState(topic, TopicState.Normal, level):
           warn "Unknown log topic", topic
       tracing = under
       info "Trace logging switched", tracing, mesh
@@ -197,7 +197,7 @@ proc traceWhileUnderMeshed(gossipSub: GossipSub) {.async.} =
 
 proc main {.async.} =
   # Runtime filtering starts wide open; INFO everywhere, TRACE only where switched on.
-  setLogLevel(LogLevel.INFO)
+  chronicles.setLogLevel(LogLevel.INFO)
   randomize()
   let
     rng = libp2p.newRng()
