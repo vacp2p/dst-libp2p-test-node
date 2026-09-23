@@ -27,7 +27,8 @@ RUN nimble install -dy --verbose --useSystemNim | tee /tmp/install.log && grep -
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/nim nimble c --useSystemNim \
     --os:linux --cpu:amd64 --passL:"-static -mmusl" \
-    -d:chronicles_colors=None --threads:on --mm:refc \
+    -d:chronicles_colors=None -d:chronicles_log_level=TRACE -d:chronicles_runtime_filtering=on \
+    --threads:on --mm:refc \
     -d:metrics -d:libp2p_network_protocols_metrics -d:release \
     -d:chronosFutureTracking --hints:on \
     --passL:"-static-libgcc -static-libstdc++" \

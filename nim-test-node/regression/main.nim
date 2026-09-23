@@ -1,5 +1,6 @@
 import stew/endians2, stew/byteutils, tables, strutils, os, json
 import chronos, chronos/apps/http/httpserver, chronos/debugutils, chronos/config
+import chronicles
 import std/[random, hashes]
 import libp2p, libp2p/[muxers/mplex/lpchannel, stream/connection, crypto/secp, multiaddress]
 import libp2p/protocols/[pubsub/pubsubpeer, pubsub/rpc/messages, ping]
@@ -176,7 +177,27 @@ proc watchBootstrapStall() {.async.} =
       if line.len > 0:
         notice "pending future", entry = line
 
+const traceTopics = ["kad-dht", "dialer", "connmanager"]
+
+proc traceWhileUnderMeshed(gossipSub: GossipSub) {.async.} =
+  ## TRACE on the dial path while this node's mesh is below dLow, after TRACE_AFTER_S.
+  await sleepAsync(parseInt(getEnv("TRACE_AFTER_S", "600")).seconds)
+  var tracing = false
+  while true:
+    let mesh = gossipSub.mesh.getOrDefault("test").len
+    let under = mesh < gossipSub.parameters.dLow
+    if under != tracing:
+      let level = if under: LogLevel.TRACE else: LogLevel.NONE
+      for topic in traceTopics:
+        if not setTopicState(topic, TopicState.Normal, level):
+          warn "Unknown log topic", topic
+      tracing = under
+      info "Trace logging switched", tracing, mesh
+    await sleepAsync(15.seconds)
+
 proc main {.async.} =
+  # Runtime filtering starts wide open; INFO everywhere, TRACE only where switched on.
+  setLogLevel(LogLevel.INFO)
   randomize()
   let
     rng = libp2p.newRng()
@@ -234,6 +255,9 @@ proc main {.async.} =
 
   info "Listening on ", address = switch.peerInfo.addrs
   info "Peer details ", peer = myId, peerId = switch.peerInfo.peerId
+
+  if nodeRole == RoleNormal:
+    asyncSpawn traceWhileUnderMeshed(gossipSub)
 
   if nodeRole == RoleBootstrap:
     info "Bootstrap node ready (kad-dht anchor)",
