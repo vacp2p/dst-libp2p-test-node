@@ -17,7 +17,8 @@ nimble c \
 
 To build with Docker:
 ```
-docker buildx build --platform linux/amd64 -t radiken/dst-test-node-connmanager:latest --push .
+cd ..
+docker buildx build --platform linux/amd64 -f connmanager/Dockerfile -t radiken/dst-test-node-connmanager:latest --push .
 ```
 
 ## Environment variables

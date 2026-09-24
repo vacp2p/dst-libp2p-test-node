@@ -4,6 +4,8 @@ import libp2p, libp2p/[multiaddress]
 import libp2p/extended_peer_record
 import libp2p/protocols/kademlia
 import env, helpers, core
+import ../common/health_server
+import ../common/shutdown
 
 logScope:
   topics = "dst"
@@ -48,12 +50,10 @@ proc main() {.async.} =
   case cfg.role
   of RoleBootstrap:
     info "Bootstrap role active"
-    while true:
-      await sleepAsync(1.hours)
+    await waitShutdownSignal()
   of RoleAdvertiser:
     disco.startAdvertisingServices(advertisedServices)
-    while true:
-      await sleepAsync(1.hours)
+    await waitShutdownSignal()
   of RoleDiscoverer:
     disco.startDiscoveringServicesLog(cfg.discoverServices)
     await disco.runLookupLoop(cfg.discoverServices, cfg.lookupInterval)

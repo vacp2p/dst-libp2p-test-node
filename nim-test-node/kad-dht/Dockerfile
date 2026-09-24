@@ -14,8 +14,9 @@ RUN apt-get update && \
 RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
 ENV PATH="/root/.nimble/bin:${PATH}"
 
-WORKDIR /node
-COPY . .
+WORKDIR /node/kad-dht
+COPY common /node/common
+COPY kad-dht/. .
 
 RUN git config --global http.sslVerify false
 
@@ -41,7 +42,7 @@ RUN apt-get update && \
 
 WORKDIR /node
 
-COPY --from=build /node/main /node/main
+COPY --from=build /node/kad-dht/main /node/main
 
 RUN chmod +x main
 

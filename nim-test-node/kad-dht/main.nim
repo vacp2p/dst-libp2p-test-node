@@ -13,6 +13,8 @@ from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMillise
 from nativesockets import getHostname
 import helpers
 import core
+import ../common/health_server
+import ../common/shutdown
 
 logScope:
   topics = "dst"
@@ -40,8 +42,7 @@ proc main() {.async.} =
     var kad = await mountDiscovery(switch, discovery, @[])
     discard await startHealthServer(prometheusPort)
     # Just stay alive and serve queries
-    while true:
-      await sleepAsync(1.hours)
+    await waitShutdownSignal()
   of RoleNormal:
     let jitter = myId * 200
     if jitter > 0:
@@ -54,11 +55,10 @@ proc main() {.async.} =
       quit(1)
 
     var kad = await mountDiscovery(switch, discovery, bootAddresses)
-    await runWarmup(kad, selfId)
+    await runWarmup(kad, selfId, rng)
     discard await startHealthServer(prometheusPort)
     # Keep node alive for steady state refresh
-    while true:
-      await sleepAsync(1.hours)
+    await waitShutdownSignal()
   of RoleProbe:
     let jitter = myId * 200
     if jitter > 0:
@@ -71,8 +71,6 @@ proc main() {.async.} =
       quit(1)
 
     var kad = await mountDiscovery(switch, discovery, bootAddresses)
-    await runProbe(kad)
-    while true:
-      await sleepAsync(1.hours)
+    await runProbe(kad, rng)
 
 waitFor(main())

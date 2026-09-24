@@ -45,17 +45,19 @@ message delay and expose metrics on port `8008`.
 The normal Dockerfile can build four image variants:
 
 ```bash
+# Run these commands from nim-test-node/ so the shared common modules are in context.
+
 # amd64 normal node
-docker buildx build --platform linux/amd64 -f Dockerfile -t regression-node-amd64 --load .
+docker buildx build --platform linux/amd64 -f regression/Dockerfile -t regression-node-amd64 --load .
 
 # amd64 bootstrap node
-docker buildx build --platform linux/amd64 -f Dockerfile --build-arg NODE_BINARY=bootstrap -t regression-bootstrap-amd64 --load .
+docker buildx build --platform linux/amd64 -f regression/Dockerfile --build-arg NODE_BINARY=bootstrap -t regression-bootstrap-amd64 --load .
 
 # arm64 normal node
-docker buildx build --platform linux/arm64 -f Dockerfile -t regression-node-arm64 --load .
+docker buildx build --platform linux/arm64 -f regression/Dockerfile -t regression-node-arm64 --load .
 
 # arm64 bootstrap node
-docker buildx build --platform linux/arm64 -f Dockerfile --build-arg NODE_BINARY=bootstrap -t regression-bootstrap-arm64 --load .
+docker buildx build --platform linux/arm64 -f regression/Dockerfile --build-arg NODE_BINARY=bootstrap -t regression-bootstrap-arm64 --load .
 ```
 
 The container entrypoint is always `/node/main`, even for the bootstrap image.
@@ -67,13 +69,13 @@ For a registry push, replace `--load` with `--push` and use the full registry
 image name:
 
 ```bash
-docker buildx build --platform linux/amd64 -f Dockerfile -t <registry>/regression-node-amd64:<tag> --push .
+docker buildx build --platform linux/amd64 -f regression/Dockerfile -t <registry>/regression-node-amd64:<tag> --push .
 ```
 
 Example:
 
 ```bash
-docker buildx build --platform linux/amd64 -f Dockerfile -t ghcr.io/vacp2p/dst-libp2p-test-node/regression-node:v0.1.0 --push .
+docker buildx build --platform linux/amd64 -f regression/Dockerfile -t ghcr.io/vacp2p/dst-libp2p-test-node/regression-node:v0.1.0 --push .
 ```
 
 ## Runtime knobs

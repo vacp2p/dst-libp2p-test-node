@@ -7,4 +7,6 @@ description = "Connection manager test node"
 license = "MIT"
 
 requires "nim >= 2.2.0",
-  "nimcrypto 0.6.4", "libp2p#7cc4280e2efd5e6c2ebd732ce33d309376a9627e"
+  "nimcrypto >= 0.6.4",
+  "lsquic == 0.9.0",
+  "libp2p#7cc4280e2efd5e6c2ebd732ce33d309376a9627e"

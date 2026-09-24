@@ -4,13 +4,14 @@ set -euo pipefail
 
 IMAGE_NAME="soutullostatus/dst-test-node-service-discovery"
 NETWORK_NAME="service-discovery-network"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Cleaning previous environment..."
 docker rm -f sd-bootstrap sd-advertiser sd-discoverer 2>/dev/null || true
 docker network rm "${NETWORK_NAME}" 2>/dev/null || true
 
 echo "Building image..."
-docker build -t "${IMAGE_NAME}" .
+docker build -f "${SCRIPT_DIR}/Dockerfile" -t "${IMAGE_NAME}" "${SCRIPT_DIR}/.."
 
 echo "Creating network..."
 docker network create "${NETWORK_NAME}"

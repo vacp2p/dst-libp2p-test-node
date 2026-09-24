@@ -3,7 +3,7 @@
 # Ubuntu 22.04 + Shadow built from source + the pod-api-requester (the in-Shadow
 # traffic publisher, run by the `publisher` host in batch mode).
 # No nim test-node binary baked in: per-experiment dynamic test-node images
-# (built from nim-test-node/Dockerfile_amd64_shadow) ship the `main` binary
+# (built from nim-test-node/regression/Dockerfile_shadow) ship the `main` binary
 # separately. A Job spec uses an init container to copy `main` from the
 # per-experiment image into an emptyDir, then runs Shadow from this image.
 #

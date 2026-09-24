@@ -11,6 +11,7 @@ import sequtils, math, metrics, metrics/chronos_httpserver
 from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMilliseconds
 from times import getTime, toUnixFloat, `-`, initTime, `$`, inMilliseconds, Time
 from nativesockets import getHostname
+import ../common/shutdown
 
 logScope:
   topics = "dst"
@@ -511,6 +512,6 @@ proc main() {.async.} =
   info "Starting listening endpoint for publish controller"
   discard gossipSub.startHttpServer(myId)
 
-  await sleepAsync(2.days)
+  await waitShutdownSignal()
 
 waitFor(main())

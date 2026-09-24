@@ -1,5 +1,5 @@
 import libp2p
-import chronos, chronos/apps/http/httpserver
+import chronos
 import chronicles
 import libp2p/protocols/[kademlia, kad_disco]
 import os
@@ -7,13 +7,6 @@ import env
 
 logScope:
   topics = "dst"
-
-# --- Helpers ---
-
-proc getRandomPeerId*(): PeerId =
-  # Generates a random peer ID for FIND_NODE targets
-  let rng = newRng()
-  return PeerId.init(PrivateKey.random(Secp256k1, rng[]).get()).get()
 
 proc buildSwitch*(muxer: string, address: string): Switch =
   var builder = SwitchBuilder
@@ -91,28 +84,3 @@ proc connectToBootstraps*(
     )
 
   ok(bootstraps)
-
-proc startHealthServer*(port: Port): Future[HttpServerRef] {.async.} =
-  proc handler(request: RequestFence): Future[HttpResponseRef] {.async.} =
-    if request.isErr():
-      return defaultResponse()
-
-    let req = request.get()
-
-    if req.meth == MethodGet and (req.uri.path == "/health" or req.uri.path == "/ready"):
-      return await req.respond(
-        Http200, "ok", HttpTable.init([("Content-Type", "text/plain")])
-      )
-
-    return await req.respond(Http404, "Not Found")
-
-  let addrs = initTAddress("0.0.0.0:" & $port)
-  let serverRes = HttpServerRef.new(addrs, handler)
-  if serverRes.isErr():
-    raise newException(
-      CatchableError, "Failed to create health HTTP server: " & $serverRes.error
-    )
-
-  let server = serverRes.get()
-  server.start()
-  return server

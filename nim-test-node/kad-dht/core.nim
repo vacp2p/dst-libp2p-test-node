@@ -6,6 +6,7 @@ import sequtils, math, metrics, metrics/chronos_httpserver
 import chronicles
 import env
 import helpers
+import ../common/peer_ids
 
 logScope:
   topics = "dst"
@@ -14,7 +15,7 @@ from times import getTime, Time, toUnix, fromUnix, `-`, initTime, `$`, inMillise
 
 # --- Core Logic ---
 
-proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
+proc runWarmup*[R](kad: KadDHT, selfId: PeerId, rng: R) {.async.} =
   info "Starting warmup phase"
 
   # 5x FIND_NODE(self)
@@ -30,9 +31,8 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
     await sleepAsync(1.seconds)
 
   # 15x FIND_NODE(random)
-  for i in 1 .. 15:
-    let target = getRandomPeerId()
-    debug "Warmup: Finding random node", iteration = i, target = target
+  for i, target in randomPeerIds(rng, 15):
+    debug "Warmup: Finding random node", iteration = i + 1, target = target
 
     let peers = await kad.findNode(target.toKey())
 
@@ -40,11 +40,11 @@ proc runWarmup*(kad: KadDHT, selfId: PeerId) {.async.} =
 
   info "Warmup complete"
 
-proc runProbe*(kad: KadDHT) {.async.} =
+proc runProbe*[R](kad: KadDHT, rng: R) {.async.} =
   info "Starting probe loop"
   while true:
     let
-      targetPeer = getRandomPeerId()
+      targetPeer = randomPeerId(rng)
       targetKey = targetPeer.toKey()
 
     try:

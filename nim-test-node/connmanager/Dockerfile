@@ -13,17 +13,18 @@ RUN apt-get update && \
 RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
 ENV PATH="/root/.nimble/bin:${PATH}"
 
-WORKDIR /node
+WORKDIR /node/connmanager
 
-COPY test_node.nimble .
+COPY connmanager/test_node.nimble .
 
 RUN git config --global http.sslVerify false
 
 RUN --mount=type=cache,target=/root/.nimble/pkgs \
     --mount=type=cache,target=/root/.nimble/pkgs2 \
-    nimble install -dy
+    nimble install -dy --useSystemNim
 
-COPY . .
+COPY common /node/common
+COPY connmanager/. .
 
 RUN nimble c \
     -d:chronicles_colors=None \
@@ -48,7 +49,7 @@ RUN apt-get update && \
 
 WORKDIR /node
 
-COPY --from=build /node/main /node/main
+COPY --from=build /node/connmanager/main /node/main
 
 RUN chmod +x main
 

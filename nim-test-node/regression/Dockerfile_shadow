@@ -15,7 +15,7 @@ FROM debian:bookworm-slim AS builder
 ARG NODE_BINARY=node
 ARG NIM_VERSION=2.2.6
 
-WORKDIR /node
+WORKDIR /node/regression
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git build-essential ca-certificates \
@@ -33,14 +33,15 @@ RUN curl -fsSL "https://nim-lang.org/download/nim-${NIM_VERSION}-linux_x64.tar.x
     && ln -sf "/usr/local/nim-${NIM_VERSION}/bin/nim" /usr/local/bin/nim \
     && ln -sf "/usr/local/nim-${NIM_VERSION}/bin/nimble" /usr/local/bin/nimble
 
-COPY . .
+COPY common /node/common
+COPY regression/. .
 
 RUN nimble refresh
 RUN nimble install -dy --verbose
 
 # Floor lsquic's engine tick re-arms so Shadow can advance simulated time.
 # Gated by LSQUIC_TICK_FLOOR_US (unset/0 = stock). See README.md.
-COPY lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
+COPY regression/lsquic-tick-floor.patch /tmp/lsquic-tick-floor.patch
 RUN set -eu; \
     patched=0; \
     for d in /root/.nimble/pkgcache/*lsquic*/ /root/.nimble/pkgs2/lsquic-*/; do \

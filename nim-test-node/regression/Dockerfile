@@ -1,7 +1,7 @@
 ARG NIM_BUILDPLATFORM=linux/amd64
 FROM --platform=${NIM_BUILDPLATFORM} nimlang/nim:2.2.10 AS builder
 
-WORKDIR /node
+WORKDIR /node/regression
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
@@ -21,10 +21,11 @@ RUN git config --global http.version HTTP/1.1
 RUN nimble install -y 'nimble@#07caee397d628c9e93d81048268365c4c2414a80'
 ENV PATH="/root/.nimble/bin:${PATH}"
 
-COPY test_node.nimble nimble.lock config.nims ./
+COPY regression/test_node.nimble regression/nimble.lock regression/config.nims ./
 RUN nimble refresh && nimble setup
 
-COPY . .
+COPY common /node/common
+COPY regression/. .
 
 ARG TARGETARCH
 ARG NODE_BINARY=node

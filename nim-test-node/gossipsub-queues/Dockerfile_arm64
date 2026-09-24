@@ -1,8 +1,9 @@
 FROM nimlang/nim:latest AS builder
 
-WORKDIR /node
+WORKDIR /node/gossipsub-queues
 
-COPY . .
+COPY common /node/common
+COPY gossipsub-queues/. .
 
 RUN apt-get update && apt-get install -y \
   curl git build-essential ca-certificates \
@@ -40,10 +41,10 @@ RUN nimble c \
   main
 
 
-RUN chmod +x /node/main
+RUN chmod +x /node/gossipsub-queues/main
 RUN nim --version > nim_version
 RUN nimble --version > nimble_version
 
 EXPOSE 5000 8008 8645
 
-ENTRYPOINT ["/node/main"]
+ENTRYPOINT ["/node/gossipsub-queues/main"]

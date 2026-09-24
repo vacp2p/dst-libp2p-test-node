@@ -14,12 +14,13 @@ RUN curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y
 ENV PATH="/root/.nimble/bin:${PATH}"
 RUN git config --global http.sslVerify false
 
-WORKDIR /node
-COPY test_node.nimble .
+WORKDIR /node/service-discovery
+COPY service-discovery/test_node.nimble .
 
 RUN nimble install -dy
 
-COPY *.nim .
+COPY common /node/common
+COPY service-discovery/*.nim .
 
 RUN nimble c \
     -d:chronicles_colors=None --threads:on --mm:refc \

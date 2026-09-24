@@ -7,7 +7,7 @@ import libp2p
 
 import ../env
 import ../node_setup
-import ../shutdown_utils
+import ../../common/shutdown
 
 logScope:
   topics = "dst"

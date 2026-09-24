@@ -4,6 +4,7 @@ import metrics, metrics/chronos_httpserver
 import libp2p, libp2p/[multiaddress, crypto/secp]
 from nativesockets import getHostname
 import env
+import ../common/shutdown
 
 logScope:
   topics = "dst"
@@ -92,8 +93,7 @@ proc runHub(cfg: HubConfig) {.async.} =
         info "Dialing peer hub", target = hubAddr
         asyncSpawn resolveAndConnect(switch, hubAddr)
 
-  while true:
-    await sleepAsync(1.hours)
+  await waitShutdownSignal()
 
 proc runPeer(cfg: PeerConfig) {.async.} =
   var builder = SwitchBuilder
@@ -142,11 +142,9 @@ proc runPeer(cfg: PeerConfig) {.async.} =
     else:
       for addr in cfg.hubAddrs:
         await resolveAndConnect(switch, addr)
-      while true:
-        await sleepAsync(1.hours)
+      await waitShutdownSignal()
   else:
-    while true:
-      await sleepAsync(1.hours)
+    await waitShutdownSignal()
 
 proc main() {.async.} =
   case getRole()

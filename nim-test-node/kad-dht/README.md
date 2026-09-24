@@ -13,8 +13,10 @@ This commit is already set in .nimble file.
 
 If you want to build with Docker, you can do it with:
 ```
+cd ..
 docker buildx build \
   --platform linux/amd64 \
+  -f kad-dht/Dockerfile \
   -t docker.io/<your_registry>/<your_image_tag> \
   --push \
   .

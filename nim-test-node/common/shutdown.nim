@@ -1,6 +1,7 @@
 import chronos
 
 proc waitShutdownSignal*() {.async.} =
+  ## Wait until the process receives SIGINT or SIGTERM.
   let
     sigIntFut = waitSignal(SIGINT)
     sigTermFut = waitSignal(SIGTERM)

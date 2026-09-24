@@ -14,7 +14,7 @@ import ../env
 import ../ping_utils
 import ../kad_utils
 import ../node_setup
-import ../shutdown_utils
+import ../../common/shutdown
 
 logScope:
   topics = "dst"
